@@ -12,6 +12,9 @@ class Controller_Dbsetting extends Controller_Template {
     
     // Available ODBC DSNs from Windows Registry
     protected $odbc_dsns;
+
+      // Database file paths for each DSN
+      protected $odbc_dsn_paths;
     
     // Current selected DSN (from session)
     protected $current_dsn;
@@ -50,6 +53,8 @@ class Controller_Dbsetting extends Controller_Template {
         
         // Get ODBC DSNs from Windows Registry
         $this->odbc_dsns = $this->get_odbc_dsns_from_registry();
+        // Get database paths for each DSN
+        $this->odbc_dsn_paths = array(); foreach ($this->odbc_dsns as $name => $dsn) { $this->odbc_dsn_paths[$name] = $this->get_database_path_for_dsn($name); }
         
         // Get current DSN from session or read from database.php
         $this->current_dsn = Session::instance()->get('current_dsn', $this->get_current_dsn_from_config());
@@ -178,6 +183,7 @@ class Controller_Dbsetting extends Controller_Template {
         
         $content = View::factory('dbsetting/index')
             ->set('odbc_dsns', $this->odbc_dsns)
+            ->set('odbc_dsn_paths', $this->odbc_dsn_paths)
             ->set('current_dsn', $this->current_dsn)
             ->set('service_status', $service_status)
             ->set('backup_dir', $backup_dir)
@@ -823,7 +829,8 @@ class Controller_Dbsetting extends Controller_Template {
         
         $registry_paths = array(
             'HKEY_CURRENT_USER\Software\ODBC\ODBC.INI\ODBC Data Sources',
-            'HKEY_LOCAL_MACHINE\SOFTWARE\ODBC\ODBC.INI\ODBC Data Sources'
+            'HKEY_LOCAL_MACHINE\SOFTWARE\ODBC\ODBC.INI\ODBC Data Sources',
+            'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\ODBC\ODBC.INI\ODBC Data Sources'
         );
         
         foreach ($registry_paths as $registry_path) {
@@ -856,6 +863,44 @@ class Controller_Dbsetting extends Controller_Template {
         
         return $dsns;
     }
+
+    /**
+     * Get database file path for a given DSN from Windows Registry
+     *
+     * @param string $dsn_name DSN name
+     * @return string Path to database file or empty string if not found
+     */
+            protected function get_database_path_for_dsn($dsn_name)
+    {
+        $registry_paths = array(
+            'HKEY_CURRENT_USER\Software\ODBC\ODBC.INI\\' . $dsn_name,
+            'HKEY_LOCAL_MACHINE\SOFTWARE\ODBC\ODBC.INI\\' . $dsn_name,
+            'HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\ODBC\ODBC.INI\\' . $dsn_name
+        );
+        
+        $possible_keys = array('Database', 'Server', 'Dbname', 'DataSource', 'DBQ', 'Data Source', 'DBNAME');
+        
+        foreach ($registry_paths as $registry_path) {
+            foreach ($possible_keys as $key) {
+                $command = 'reg query "' . $registry_path . '" /v "' . $key . '" 2>nul';
+                exec($command, $output, $return_var);
+                
+                if ($return_var === 0 && !empty($output)) {
+                    foreach ($output as $line) {
+                        if (preg_match('/REG_SZ\s+(.*)/', $line, $matches)) {
+                            $path = trim($matches[1]);
+                            if (!empty($path)) {
+                                return $path;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return '';
+    }
+
     
     /**
      * Get current DSN from database.php config file

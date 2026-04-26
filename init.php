@@ -6,4 +6,4 @@
  */
 
 // Module version
-define('DBSETTING_VERSION', '1.0.0');
+define('DBSETTING_VERSION', '1.0.2');

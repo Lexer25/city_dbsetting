@@ -53,18 +53,13 @@
                         <h5>Все доступные DSN:</h5>
                         <div class="well" style="max-height: 200px; overflow-y: auto;">
                             <table class="table table-condensed">
-                                <thead>
-                                    <tr>
-                                        <th>Имя</th>
-                                        <th>DSN</th>
-                                    </tr>
+                                <thead><tr><th>Имя</th><th>DSN</th><th>Путь к файлу БД</th></tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($odbc_dsns as $name => $dsn): ?>
                                         <tr class="<?php echo ($dsn === $current_dsn) ? 'success' : ''; ?>">
                                             <td><strong><?php echo HTML::chars($name); ?></strong></td>
-                                            <td><code><?php echo HTML::chars($dsn); ?></code></td>
-                                        </tr>
+                                            <td><code><?php echo HTML::chars($dsn); ?></code></td><td><?php echo isset($odbc_dsn_paths[$name]) ? HTML::chars($odbc_dsn_paths[$name]) : ""; ?></td></tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
