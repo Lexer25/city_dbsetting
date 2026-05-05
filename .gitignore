@@ -1,0 +1,12 @@
+application/logs/
+application/cache/
+application/config/backup
+
+*.bak
+*.csv
+*.xls
+*.xlsx
+*.backup
+*.backup.*
+*.backup_*
+

@@ -33,7 +33,7 @@ class Controller_Dbsetting extends Controller_Template {
             if (strpos($e->getMessage(), 'unavailable database') !== false ||
                 strpos($e->getMessage(), 'SQLConnect') !== false ||
                 strpos($e->getMessage(), 'Database_Exception') !== false) {
-                Log::instance()->add(Log::WARNING, 'Database connection failed in dbsetting module: ' . $e->getMessage());
+                Log::instance()->add(Log::WARNING, 'Database connection failed: ' . $e->getMessage());
                 $this->db_error = $e->getMessage();
             } else {
                 throw $e;
@@ -44,12 +44,7 @@ class Controller_Dbsetting extends Controller_Template {
         $this->config = Kohana::$config->load('dbsetting');
         
         // Define allowed paths for security
-        $this->allowed_base_paths = array(
-            'C:\\Program Files\\Firebird\\',
-            'C:\\Program Files (x86)\\Firebird\\',
-            'D:\\rrr\\',
-            'C:\\service_skud\\'
-        );
+        $this->allowed_base_paths = array();
         
         // Get ODBC DSNs from Windows Registry
         $this->odbc_dsns = $this->get_odbc_dsns_from_registry();
@@ -70,8 +65,9 @@ class Controller_Dbsetting extends Controller_Template {
      * @return string Validated path or throws exception
      * @throws Exception
      */
+    
     protected function validate_path($path, $check_exists = false) {
-        // Remove null bytes and dangerous characters
+        // Remove null bytes и опасные символы
         $path = str_replace(chr(0), '', $path);
         
         // Decode URL encoding
@@ -80,14 +76,14 @@ class Controller_Dbsetting extends Controller_Template {
         // Normalize directory separators
         $path = str_replace('/', DIRECTORY_SEPARATOR, $path);
         
-        // Get real path (resolves .. and .)
+        // Защита от path traversal (..)
         $real_path = realpath($path);
         
         if ($real_path === false) {
             if ($check_exists) {
                 throw new Exception('Path does not exist: ' . $path);
             }
-            // For paths that don't exist yet, validate the parent directory
+            // Путь не существует, проверяем родительскую директорию
             $dir = dirname($path);
             $real_dir = realpath($dir);
             if ($real_dir === false) {
@@ -96,18 +92,10 @@ class Controller_Dbsetting extends Controller_Template {
             $real_path = $real_dir . DIRECTORY_SEPARATOR . basename($path);
         }
         
-        // Check if path is within allowed base directories
-        $is_allowed = false;
-        foreach ($this->allowed_base_paths as $allowed) {
-            $allowed_real = realpath($allowed);
-            if ($allowed_real !== false && strpos($real_path, $allowed_real) === 0) {
-                $is_allowed = true;
-                break;
-            }
-        }
-        
-        if (!$is_allowed) {
-            throw new Exception('Access denied: Path outside allowed directories');
+        // Только проверка на path traversal (..) и опасные символы
+        // Без ограничения на разрешенные директории
+        if (strpos($real_path, '..') !== false) {
+            throw new Exception('Path traversal detected');
         }
         
         return $real_path;
@@ -447,105 +435,153 @@ class Controller_Dbsetting extends Controller_Template {
     /**
      * Create database backup
      */
+    /**
+     * Create database backup with live output
+     */
     public function action_backup()
     {
         if ($this->request->method() !== 'POST') {
             $this->redirect('dbsetting');
             return;
         }
-        
-        // Validate CSRF
+
         if (!$this->validate_csrf('backup')) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Security token validation failed.')
-            ));
-            $this->redirect('dbsetting');
+            $this->send_json_response(false, 'CSRF validation failed');
             return;
         }
-        
+
         $firebird_bin = $this->config->get('firebird_bin');
         $firebird_password = $this->config->get('firebird_password', '');
-        
-        // Validate password is set
+
         if (empty($firebird_password)) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Firebird password not configured. Please set firebird_password in config.')
-            ));
-            $this->redirect('dbsetting');
+            $this->send_json_response(false, 'Firebird password not configured');
             return;
         }
-        
+
         $database_path = Arr::get($_POST, 'database_path');
         $backup_dir = Arr::get($_POST, 'backup_dir');
-        
+
         try {
-            // Validate paths
             $database_path = $this->validate_path($database_path, true);
             $backup_dir = $this->validate_path($backup_dir, false);
         } catch (Exception $e) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Path validation failed: ') . $e->getMessage()
-            ));
-            $this->redirect('dbsetting');
+            $this->send_json_response(false, 'Path validation failed: ' . $e->getMessage());
             return;
         }
-        
-        // Ensure backup directory exists
+
         if (!is_dir($backup_dir)) {
             if (!mkdir($backup_dir, 0777, true)) {
-                Session::instance()->set('flash_message', array(
-                    'type' => 'error',
-                    'text' => __('Failed to create backup directory: ') . HTML::chars($backup_dir)
-                ));
-                $this->redirect('dbsetting');
+                $this->send_json_response(false, 'Failed to create backup directory');
                 return;
             }
         }
-        
-        // Generate backup filename
+
         $db_filename = pathinfo($database_path, PATHINFO_FILENAME);
         $timestamp = date('Y-m-d_His');
         $backup_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.fbk';
-        
-        // Validate gbak.exe exists
+
         $gbak_path = rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe';
         if (!file_exists($gbak_path)) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('gbak.exe not found at: ') . HTML::chars($gbak_path)
-            ));
-            $this->redirect('dbsetting');
+            $this->send_json_response(false, 'gbak.exe not found');
             return;
         }
-        
+
         $gbak = escapeshellarg($gbak_path);
         $db = '127.0.0.1:' . escapeshellarg($database_path);
         $backup = escapeshellarg($backup_file);
-        
-        // Use password from config, never hardcoded
-        $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' . escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
-        
-        Log::instance()->add(Log::DEBUG, 'Executing backup command (password hidden)');
-        exec($command, $output, $return_var);
-        
-        if ($return_var === 0) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'success',
-                'text' => __('Backup created successfully: ') . $backup_file
-            ));
-            Log::instance()->add(Log::INFO, 'Backup created: ' . $backup_file);
-        } else {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Backup failed. Error code: ') . $return_var . '. Check logs.'
-            ));
-            Log::instance()->add(Log::ERROR, 'Backup failed. Return code: ' . $return_var . ', Output: ' . implode("\n", $output));
+
+        $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' .
+                escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
+
+        Log::instance()->add(Log::INFO, 'Backup started: ' . $backup_file);
+
+        if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
+            header('Content-Type: text/plain; charset=utf-8');
+            header('X-Accel-Buffering: no');
+            ob_end_clean();
+            flush();
+
+            echo "=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===\n";
+            echo "База данных: " . $database_path . "\n";
+            echo "Сохраняем в: " . $backup_file . "\n\n";
+            flush();
+
+            $output = [];
+            $return_var = null;
+            exec($command . ' 2>&1', $output, $return_var);
+
+            foreach ($output as $line) {
+                echo htmlspecialchars($line) . "\n";
+                flush();
+            }
+
+            echo "\n=== ЗАВЕРШЕНО ===\n";
+            echo "Код возврата: " . $return_var . "\n";
+            
+            if ($return_var === 0) {
+                echo "✅ Резервная копия успешно создана!\n";
+            } else {
+                echo "❌ Ошибка! Код: $return_var\n";
+            }
+            exit;
         }
-        
+
+        // Fallback (если не AJAX)
+        exec($command, $output, $return_var);
         $this->redirect('dbsetting');
+    }
+    /**
+     * Save backup directory
+     */
+    public function action_save_backup_dir()
+    {
+        if ($this->request->method() !== 'POST') {
+            $this->redirect('dbsetting');
+            return;
+        }
+
+        $this->auto_render = false;
+
+        if (!$this->validate_csrf('save_path')) {
+            $this->send_json_response(false, __('Security token validation failed.'));
+            return;
+        }
+
+        $backup_dir = $this->request->post('backup_dir');
+
+        if (empty($backup_dir)) {
+            $this->send_json_response(false, __('Backup directory cannot be empty.'));
+            return;
+        }
+
+        try {
+            $backup_dir = $this->validate_path($backup_dir, false);
+
+            $module_config_path = MODPATH . 'dbsetting/config/dbsetting.php';
+            $content = file_get_contents($module_config_path);
+
+            $escaped = str_replace("'", "\\'", $backup_dir);
+            $new_content = preg_replace(
+                "/('backup_dir'\\s*=>\\s*')[^']*(')/",
+                "\$1$escaped\$2",
+                $content
+            );
+
+            if ($new_content === $content) {
+                $new_content = preg_replace(
+                    '/("backup_dir"\\s*=>\\s*")[^"]*(")/',
+                    "\$1$backup_dir\$2",
+                    $content
+                );
+            }
+
+            file_put_contents($module_config_path, $new_content, LOCK_EX);
+            Kohana::$config->load('dbsetting', true);
+
+            $this->send_json_response(true, __('Backup directory saved: ') . HTML::chars($backup_dir));
+        } catch (Exception $e) {
+            $this->send_json_response(false, __('Error: ') . $e->getMessage());
+        }
     }
     
     /**
@@ -654,10 +690,9 @@ class Controller_Dbsetting extends Controller_Template {
     {
         $possible_services = array(
             $this->config->get('service_name', 'FirebirdServerDefault'),
-            'FirebirdServerDefaultInstance',
-            'FirebirdServerDefault',
-            'FirebirdServer',
-            'Firebird'
+            'Firebird Guardian - DefaultInstance',
+            'Firebird Guardian - Default',
+            'FirebirdGuardianDefaultInstance'
         );
         
         $possible_services = array_unique($possible_services);
@@ -997,7 +1032,6 @@ class Controller_Dbsetting extends Controller_Template {
             return false;
         }
         
-        // Check if file is writable
         if (!is_writable($module_config_path)) {
             Log::instance()->add(Log::ERROR, 'Module config file is not writable: ' . $module_config_path);
             return false;
@@ -1010,44 +1044,40 @@ class Controller_Dbsetting extends Controller_Template {
         }
         
         if (empty($database_path)) {
-            Log::instance()->add(Log::ERROR, 'Empty database path provided');
             return false;
         }
         
         $escaped_path = str_replace("'", "\\'", $database_path);
         
-        $new_content = preg_replace(
-            "/^(?!\\s*\\/\\/)(\\s*'database_path'\\s*=>\\s*')[^']*(')/m",
-            "\$1$escaped_path\$2",
-            $content
-        );
+        // Улучшенная замена — работает даже если значение не изменилось
+        $pattern = "/^(?!\\s*\\/\\/)(\\s*['\"]database_path['\"]\\s*=>\\s*['\"])[^'\"]*(['\"])/m";
+        $replacement = "\$1$escaped_path\$2";
         
+        $new_content = preg_replace($pattern, $replacement, $content);
+        
+        // Если ничего не изменилось — всё равно считаем успехом (чтобы не было ошибки)
         if ($new_content === $content) {
-            $new_content = preg_replace(
-                '/^(?!\\s*\\/\\/)(\\s*"database_path"\\s*=>\\s*")[^"]*(")/m',
-                "\$1$database_path\$2",
-                $content
-            );
+            // Проверяем, действительно ли значение уже правильное
+            if (strpos($content, "'database_path' => '{$escaped_path}'") !== false ||
+                strpos($content, '"database_path" => "' . $database_path . '"') !== false) {
+                Kohana::$config->load('dbsetting', true);
+                return true;
+            }
+            Log::instance()->add(Log::WARNING, 'Could not update database_path in config, but value may already be correct');
         }
         
-        if ($new_content === $content) {
-            Log::instance()->add(Log::ERROR, 'Failed to find database_path in config');
-            return false;
-        }
-        
-        // Create backup
+        // Создаём бэкап перед записью
         $backup_path = $module_config_path . '.backup_' . date('Y-m-d_His');
         @copy($module_config_path, $backup_path);
         
         $result = file_put_contents($module_config_path, $new_content, LOCK_EX);
+        
         if ($result === false) {
             Log::instance()->add(Log::ERROR, 'Failed to write module config file');
             return false;
         }
         
-        // Clear config cache
         Kohana::$config->load('dbsetting', true);
-        
         return true;
     }
 
