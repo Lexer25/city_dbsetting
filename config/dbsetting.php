@@ -13,10 +13,10 @@ return array(
     'database_path' => 'C:\Program Files (x86)\Cardsoft\DuoSE\Access\ShieldPro_rest.gdb',
     
     // Restore directory (where restored database files will be placed)
-    'restore_path' => 'D:\\rrr\\hl\\restore',
+    'restore_path' => 'D:\\rrr\\hl\\restore22',
     
     // Backup directory
-    'backup_dir' => 'C:\Tes1111t',
+    'backup_dir' => 'C:\Test',
     
     // Firebird service name (для Firebird 1.5.6)
     'service_name' => 'FirebirdGuardianDefaultInstance',

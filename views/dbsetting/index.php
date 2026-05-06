@@ -1,3 +1,7 @@
+<?php
+echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
+?>
+
 <div class="container">
     <h2>Настройки базы данных <small>Firebird ODBC</small></h2>
     
@@ -230,10 +234,29 @@
                     </form>
                     <p class="help-block small">Сервис будет остановлен во время восстановления.</p>
                 </div>
+				
+
             </div>
+
         </div>
     </div>
-    
+  							<!-- Кнопка редактирования конфигурации  -->
+				    <!-- ========== ДОБАВИТЬ ЭТУ ПАНЕЛЬ ========== -->
+    <div class="panel panel-primary">
+        <div class="panel-heading">
+            <h3 class="panel-title">Конфигурация модуля</h3>
+        </div>
+        <div class="panel-body text-center">
+            <a href="<?php echo URL::site('dbsetting/edit_config'); ?>" class="btn btn-warning btn-md">
+                <span class="glyphicon glyphicon-edit"></span> Редактировать конфигурацию
+            </a>
+            <p class="help-block" style="margin-top: 10px;">
+                <small>Прямое редактирование файла <code>dbsetting/config/dbsetting.php</code><br>
+                (Пароль Firebird, пути к папкам и др.)</small>
+            </p>
+        </div>
+    </div>
+    <!-- ====================================== -->  
     <div class="row">
         <div class="col-md-12">
             <!-- System Information -->
@@ -273,6 +296,7 @@
                         <h4><i class="glyphicon glyphicon-edit"></i> Полный доступ к управлению</h4>
                         <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
                     </div>
+
                 </div>
             </div>
         </div>
