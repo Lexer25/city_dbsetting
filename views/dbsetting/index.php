@@ -4,6 +4,11 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
 
 <div class="container">
     <h2>Настройки базы данных <small>Firebird ODBC</small></h2>
+	                    <div class="alert alert-success" style="margin-top: 20px;">
+                        <h4><i class="glyphicon glyphicon-edit"></i> Полный доступ к управлению</h4>
+                        <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
+                    </div>
+
     
     <?php if (Session::instance()->get('flash_message')): ?>
         <?php
@@ -254,7 +259,11 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                 <small>Прямое редактирование файла <code>dbsetting/config/dbsetting.php</code><br>
                 (Пароль Firebird, пути к папкам и др.)</small>
             </p>
+			    <div class="alert alert-warning">
+        <strong><i class="glyphicon glyphicon-exclamation-sign"></i> Внимание!</strong> Эти настройки влияют на базу данных и сервис. Изменения должны выполняться только администратором системы.
+    </div>
         </div>
+		
     </div>
     <!-- ====================================== -->  
     <div class="row">
@@ -292,19 +301,13 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                         </div>
                     </div>
                     
-                    <div class="alert alert-success" style="margin-top: 20px;">
-                        <h4><i class="glyphicon glyphicon-edit"></i> Полный доступ к управлению</h4>
-                        <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
-                    </div>
 
                 </div>
             </div>
         </div>
     </div>
     
-    <div class="alert alert-warning">
-        <strong><i class="glyphicon glyphicon-exclamation-sign"></i> Внимание!</strong> Эти настройки влияют на базу данных и сервис. Изменения должны выполняться только администратором системы.
-    </div>
+
 </div>
 <iframe id="explorerIframe" style="display:none;"></iframe>
 <style>
