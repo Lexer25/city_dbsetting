@@ -4,12 +4,11 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
 
 <div class="container">
     <h2>Настройки базы данных <small>Firebird ODBC</small></h2>
-	                    <div class="alert alert-success" style="margin-top: 20px;">
-                        <h4><i class="glyphicon glyphicon-edit"></i> Полный доступ к управлению</h4>
-                        <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
-                    </div>
+    <div class="alert alert-success" style="margin-top: 20px;">
+        <h4><i class="glyphicon glyphicon-edit"></i> Полный доступ к управлению</h4>
+        <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
+    </div>
 
-    
     <?php if (Session::instance()->get('flash_message_dbsetting')): ?>
         <?php
         $flash = Session::instance()->get('flash_message_dbsetting');
@@ -22,7 +21,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
             <?php echo $text; ?>
         </div>
     <?php endif; ?>
-    
+
     <?php if (isset($db_error) && !empty($db_error)): ?>
         <div class="alert alert-warning">
             <h4><i class="glyphicon glyphicon-warning-sign"></i> Ошибка подключения к базе данных</h4>
@@ -30,7 +29,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
             <p>Этот модуль позволяет исправить подключение к базе данных. Пожалуйста, выберите рабочий DSN из списка ниже.</p>
         </div>
     <?php endif; ?>
-    
+
     <div class="row">
         <div class="col-md-12">
             <!-- ODBC Selection -->
@@ -57,7 +56,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                         </div>
                         <button type="submit" class="btn btn-primary btn-sm">Переключить</button>
                     </form>
-                    
+
                     <div style="margin-top: 20px;">
                         <h5>Все доступные DSN:</h5>
                         <div class="well" style="max-height: 200px; overflow-y: auto;">
@@ -80,7 +79,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
             </div>
         </div>
     </div>
-    
+
     <div class="row">
         <div class="col-md-6">
             <!-- Backup -->
@@ -92,7 +91,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                     <form action="<?php echo URL::site('dbsetting/backup'); ?>" method="post" id="backup-form">
                         <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_backup) ? $csrf_token_backup : ''; ?>">
                         <input type="hidden" name="database_path" id="backup_database_path" value="<?php echo HTML::chars($database_path); ?>">
-                        
+
                         <div class="form-group">
                             <label>Путь к папке с базой данных:</label>
                             <div class="input-group">
@@ -126,7 +125,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                             </div>
                             <small class="text-muted">Введите имя файла вручную или выберите папку с БД через "Обзор"</small>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="backup_dir">Папка для сохранения резервной копии:</label>
                             <div class="input-group">
@@ -141,7 +140,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                                 </span>
                             </div>
                         </div>
-                        
+
                         <div class="form-group">
                             <label>Сгенерированное имя файла резервной копии:</label>
                             <div class="well well-sm" style="margin-bottom: 0; font-family: monospace;">
@@ -154,65 +153,65 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                             </div>
                             <small class="text-muted">Формат: имя_базы_данных_год-месяц-день_время.fbk</small>
                         </div>
-                        
-                        <button type="button" class="btn btn-success" onclick="startBackup()">
-                        <span class="glyphicon glyphicon-floppy-disk"></span> Создать резервную копию
-                    </button>
+
+                        <button type="button" class="btn btn-success" onclick="startBackup()" id="backupBtn">
+                            <span class="glyphicon glyphicon-floppy-disk"></span> Создать резервную копию
+                        </button>
                     </form>
                 </div>
             </div>
         </div>
-        
+
         <div class="col-md-6">
-<!-- Service Status -->
-<div class="panel panel-default">
-    <div class="panel-heading">
-        <h3 class="panel-title">Сервис Firebird</h3>
-    </div>
-    <div class="panel-body">
-        <?php
-        $status = $service_status;
-        $label_class = ($status === 'running') ? 'label-success' :
-                       (($status === 'stopped') ? 'label-danger' : 'label-default');
-        ?>
-        <div class="form-inline">
-            <div class="form-group">
-                <label>Статус:</label>
-                <span class="label <?php echo $label_class; ?>" style="margin-left: 10px;">
+            <!-- Service Status -->
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    <h3 class="panel-title">Сервис Firebird</h3>
+                </div>
+                <div class="panel-body">
                     <?php
-                    $status_text = $status;
-                    if ($status === 'running') $status_text = 'запущен';
-                    elseif ($status === 'stopped') $status_text = 'остановлен';
-                    elseif ($status === 'unknown') $status_text = 'неизвестен';
-                    echo HTML::chars($status_text);
+                    $status = $service_status;
+                    $label_class = ($status === 'running') ? 'label-success' :
+                                   (($status === 'stopped') ? 'label-danger' : 'label-default');
                     ?>
-                </span>
-            </div>
-            <div class="form-group" style="margin-left: 20px;">
-                <!-- Форма для запуска сервиса -->
-                <form method="post" action="<?php echo URL::site('dbsetting/start_service'); ?>" style="display: inline-block;">
-                    <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_service) ? $csrf_token_service : ''; ?>">
-                    <button type="submit" class="btn btn-success btn-sm" onclick="return confirmService('start');">
-                        <span class="glyphicon glyphicon-play"></span> Запустить
-                    </button>
-                </form>
-                <!-- Форма для остановки сервиса -->
-                <form method="post" action="<?php echo URL::site('dbsetting/stop_service'); ?>" style="display: inline-block;">
-                    <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_service) ? $csrf_token_service : ''; ?>">
-                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirmService('stop');">
-                        <span class="glyphicon glyphicon-stop"></span> Остановить
-                    </button>
-                </form>
-            </div>
-        </div>
-        
-        <hr>
-                    
+                    <div class="form-inline">
+                        <div class="form-group">
+                            <label>Статус:</label>
+                            <span class="label <?php echo $label_class; ?>" style="margin-left: 10px;">
+                                <?php
+                                $status_text = $status;
+                                if ($status === 'running') $status_text = 'запущен';
+                                elseif ($status === 'stopped') $status_text = 'остановлен';
+                                elseif ($status === 'unknown') $status_text = 'неизвестен';
+                                echo HTML::chars($status_text);
+                                ?>
+                            </span>
+                        </div>
+                        <div class="form-group" style="margin-left: 20px;">
+                            <!-- Форма для запуска сервиса -->
+                            <form method="post" action="<?php echo URL::site('dbsetting/start_service'); ?>" style="display: inline-block;">
+                                <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_service) ? $csrf_token_service : ''; ?>">
+                                <button type="submit" class="btn btn-success btn-sm" onclick="return confirmService('start');">
+                                    <span class="glyphicon glyphicon-play"></span> Запустить
+                                </button>
+                            </form>
+                            <!-- Форма для остановки сервиса -->
+                            <form method="post" action="<?php echo URL::site('dbsetting/stop_service'); ?>" style="display: inline-block;">
+                                <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_service) ? $csrf_token_service : ''; ?>">
+                                <button type="submit" class="btn btn-danger btn-sm" onclick="return confirmService('stop');">
+                                    <span class="glyphicon glyphicon-stop"></span> Остановить
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <hr>
+
                     <!-- Restore -->
                     <h5>Восстановление базы данных</h5>
-                    <form action="<?php echo URL::site('dbsetting/restore'); ?>" method="post" class="form-inline" onsubmit="return confirmRestore();">
+                    <form action="<?php echo URL::site('dbsetting/restore'); ?>" method="post" id="restore-form">
                         <input type="hidden" name="csrf_token" value="<?php echo isset($csrf_token_restore) ? $csrf_token_restore : $csrf_token_path; ?>">
-                        <div class="form-group" style="width: 70%;">
+                        <div class="form-group" style="width: 100%;">
                             <?php if (!empty($backup_files)): ?>
                                 <select name="backup_file" class="form-control input-sm" required style="width: 100%;">
                                     <option value="">-- выберите файл для восстановления --</option>
@@ -233,20 +232,19 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                                 </div>
                             <?php endif; ?>
                         </div>
-                        <button type="submit" class="btn btn-warning btn-sm">
+                        <button type="button" class="btn btn-warning btn-sm" onclick="startRestore()" id="restoreBtn">
                             <span class="glyphicon glyphicon-import"></span> Восстановить
                         </button>
                     </form>
-                    <p class="help-block small">Сервис будет остановлен во время восстановления.</p>
+                    <p class="help-block small">Восстановление выполняется через работающий Firebird сервис. Файл создается в папке restore_path.</p>
                 </div>
-				
-
             </div>
-
         </div>
     </div>
-  							<!-- Кнопка редактирования конфигурации  -->
-				    <!-- ========== ДОБАВИТЬ ЭТУ ПАНЕЛЬ ========== -->
+
+    <!-- ============================================ -->
+    <!-- Кнопка редактирования конфигурации -->
+    <!-- ============================================ -->
     <div class="panel panel-primary">
         <div class="panel-heading">
             <h3 class="panel-title">Конфигурация модуля</h3>
@@ -259,13 +257,13 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                 <small>Прямое редактирование файла <code>dbsetting/config/dbsetting.php</code><br>
                 (Пароль Firebird, пути к папкам и др.)</small>
             </p>
-			    <div class="alert alert-warning">
-        <strong><i class="glyphicon glyphicon-exclamation-sign"></i> Внимание!</strong> Эти настройки влияют на базу данных и сервис. Изменения должны выполняться только администратором системы.
-    </div>
+            <div class="alert alert-warning">
+                <strong><i class="glyphicon glyphicon-exclamation-sign"></i> Внимание!</strong> Эти настройки влияют на базу данных и сервис. Изменения должны выполняться только администратором системы.
+            </div>
         </div>
-		
     </div>
-    <!-- ====================================== -->  
+    <!-- ============================================ -->
+
     <div class="row">
         <div class="col-md-12">
             <!-- System Information -->
@@ -300,16 +298,39 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                             </div>
                         </div>
                     </div>
-                    
-
                 </div>
             </div>
         </div>
     </div>
-    
+
+    <!-- ============================================ -->
+    <!-- Модальное окно для бэкапа и восстановления -->
+    <!-- ============================================ -->
+    <div class="modal fade" id="processModal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-sm" role="document">
+            <div class="modal-content">
+                <div class="modal-body text-center" style="padding: 40px 30px;">
+                    <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
+                        <span class="sr-only">Загрузка...</span>
+                    </div>
+                    <h4 style="margin-top: 20px;" id="processModalTitle">Выполняется операция...</h4>
+                    <p class="text-muted" id="processModalText">Пожалуйста, подождите. Это может занять несколько минут.</p>
+                    <div id="processModalStatus" style="margin-top: 15px; font-size: 13px; color: #666;"></div>
+                </div>
+                <div class="modal-footer" style="text-align: center; border-top: none; padding-top: 0;">
+                    <button type="button" class="btn btn-default" id="processModalClose" disabled style="display:none;">
+                        <span class="glyphicon glyphicon-ok"></span> Закрыть
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ============================================ -->
 
 </div>
+
 <iframe id="explorerIframe" style="display:none;"></iframe>
+
 <style>
 .glyphicon.spinning {
     animation: spin 1s infinite linear;
@@ -323,63 +344,106 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
     from { -webkit-transform: rotate(0deg); }
     to { -webkit-transform: rotate(360deg); }
 }
+.spinner-border {
+    display: inline-block;
+    width: 4rem;
+    height: 4rem;
+    vertical-align: text-bottom;
+    border: 0.25em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border .75s linear infinite;
+}
+@keyframes spinner-border {
+    to { transform: rotate(360deg); }
+}
+.text-primary { color: #007bff; }
 </style>
-
 <script>
-// CSRF token for AJAX requests
-var csrf_token = '<?php echo $csrf_token_path; ?>';
-console.log('dbsetting script loaded');
+// Показать модальное окно
+function showProcessModal(title, text, status) {
+    document.getElementById('processModalTitle').textContent = title;
+    document.getElementById('processModalText').textContent = text;
+    document.getElementById('processModalStatus').innerHTML = status || '';
+    document.getElementById('processModalClose').style.display = 'none';
+    document.getElementById('processModalClose').disabled = true;
+    $('#processModal').modal({
+        backdrop: 'static',
+        keyboard: false
+    });
+}
 
-// Confirm backup
-function confirmBackup() {
+
+// Обновить статус в модальном окне
+function updateProcessModal(title, text, finished) {
+    if (title) {
+        document.getElementById('processModalTitle').textContent = title;
+    }
+    if (text) {
+        document.getElementById('processModalText').innerHTML = text;
+    }
+    if (finished) {
+        document.getElementById('processModalClose').style.display = 'inline-block';
+        document.getElementById('processModalClose').disabled = false;
+        document.getElementById('processModalClose').innerHTML = '<span class="glyphicon glyphicon-ok"></span> Закрыть';
+        document.getElementById('processModalClose').onclick = function() {
+            try {
+                // Пробуем через Bootstrap jQuery
+                if (typeof $ !== 'undefined') {
+                    $('#processModal').modal('hide');
+                }
+                // Если не сработало - просто закрываем через DOM
+                var modal = document.getElementById('processModal');
+                if (modal) {
+                    modal.classList.remove('in');
+                    modal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    var backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) backdrop.remove();
+                }
+                location.reload();
+            } catch(e) {
+                location.reload();
+            }
+        };
+        
+        // АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ЧЕРЕЗ 2 СЕКУНДЫ
+        setTimeout(function() {
+            try {
+                if (typeof $ !== 'undefined') {
+                    $('#processModal').modal('hide');
+                } else {
+                    var modal = document.getElementById('processModal');
+                    if (modal) {
+                        modal.classList.remove('in');
+                        modal.style.display = 'none';
+                        document.body.classList.remove('modal-open');
+                        var backdrop = document.querySelector('.modal-backdrop');
+                        if (backdrop) backdrop.remove();
+                    }
+                }
+                location.reload();
+            } catch(e) {
+                location.reload();
+            }
+        }, 2000);
+    }
+}
+
+// Функция для запуска бэкапа со спиннером
+function startBackup() {
     var backupDir = document.getElementById('backup_dir').value;
     if (!backupDir) {
         alert('Пожалуйста, укажите папку для сохранения резервной копии.');
-        return false;
+        return;
     }
-    return confirm('Внимание! Создание резервной копии может занять несколько минут.\n\nПродолжить?');
-}
-
-// Confirm restore
-function confirmRestore() {
-    return confirm('ВНИМАНИЕ! Будет выполнено восстановление базы данных в новый файл в папку, указанную в настройках.\n\n' +
-                   'Процесс может занимать длительное время\n\n' +
-                   'Вы уверены, что хотите продолжить?');
-}
-
-// Confirm service action
-function confirmService(action) {
-    var actionText = (action === 'start') ? 'запустить' : 'остановить';
-    return confirm('Вы уверены, что хотите ' + actionText + ' сервис Firebird?\n\n' +
-                   'Это может повлиять на работу приложения.');
-}
-function startBackup() {
-    let outputDiv = document.getElementById('backup-output');
     
-    if (!outputDiv) {
-        outputDiv = document.createElement('div');
-        outputDiv.id = 'backup-output';
-        outputDiv.style.cssText = `
-            background:#1e1e1e; 
-            color:#0f0; 
-            padding:15px; 
-            margin:15px 0; 
-            border:1px solid #444; 
-            max-height:500px; 
-            overflow-y:auto; 
-            font-family:Consolas,monospace; 
-            white-space:pre-wrap;
-            position:relative;
-        `;
-        
-        document.getElementById('backup-form').parentNode.appendChild(outputDiv);
-    } else {
-        outputDiv.innerHTML = '';
+    if (!confirm('Внимание! Создание резервной копии может занять несколько минут.\n\nПродолжить?')) {
+        return;
     }
-
-    // Заголовок
-    outputDiv.innerHTML += '<strong style="color:yellow">=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===</strong><br><br>';
-
+    
+    showProcessModal('🔄 Создание резервной копии', 'Идет создание резервной копии базы данных...', 'Подготовка...');
+    
     var formData = new FormData(document.getElementById('backup-form'));
     formData.append('ajax', '1');
 
@@ -389,288 +453,115 @@ function startBackup() {
     })
     .then(response => response.text())
     .then(text => {
-        outputDiv.innerHTML += text.replace(/\n/g, '<br>');
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        // Закрываем модальное окно
+        try {
+            if (typeof $ !== 'undefined') {
+                $('#processModal').modal('hide');
+            } else {
+                var modal = document.getElementById('processModal');
+                if (modal) {
+                    modal.classList.remove('in');
+                    modal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    var backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) backdrop.remove();
+                }
+            }
+        } catch(e) {}
         
-        // Кнопка закрыть внизу
-        const closeContainer = document.createElement('div');
-        closeContainer.style.textAlign = 'center';
-        closeContainer.style.marginTop = '15px';
-        
-        const closeBtn = document.createElement('button');
-        closeBtn.innerHTML = '✕ Закрыть окно вывода';
-        closeBtn.style.cssText = 'background:#c9302c; color:white; border:none; padding:8px 16px; font-size:14px; cursor:pointer;';
-        closeBtn.onclick = () => outputDiv.remove();
-        closeContainer.appendChild(closeBtn);
-        
-        outputDiv.appendChild(closeContainer);
+        if (text.indexOf('✅ Резервная копия успешно создана') !== -1) {
+            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
+            var sizeMatch = text.match(/Размер:\s*([^\s]+)/);
+            var msg = '✅ Резервная копия успешно создана!\n\n';
+            if (fileMatch) msg += 'Файл: ' + fileMatch[1] + '\n';
+            if (sizeMatch) msg += 'Размер: ' + sizeMatch[1] + '\n';
+            alert(msg);
+            location.reload();
+        } else if (text.indexOf('❌ Ошибка') !== -1) {
+            alert('❌ Ошибка создания резервной копии!\n\n' + text.replace(/\n/g, '\n'));
+        } else {
+            alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
+        }
     })
     .catch(err => {
-        outputDiv.innerHTML += '<br><strong style="color:red">Ошибка соединения: ' + err.message + '</strong>';
+        try {
+            if (typeof $ !== 'undefined') {
+                $('#processModal').modal('hide');
+            }
+        } catch(e) {}
+        alert('❌ Ошибка соединения: ' + err.message);
     });
 }
 
-// Функция для выбора папки с базами данных
-function browseDatabaseFolder() {
-    // Создаем скрытый input для выбора директории
-    // Используем nwworkaround для выбора папки
-    var folderInput = document.createElement('input');
-    folderInput.type = 'file';
-    folderInput.webkitdirectory = true;
-    folderInput.directory = true;
-    folderInput.style.display = 'none';
+// Функция для запуска восстановления со спиннером
+function startRestore() {
+    var backupFile = document.querySelector('select[name="backup_file"]');
+    if (!backupFile || !backupFile.value) {
+        alert('Пожалуйста, выберите файл для восстановления.');
+        return;
+    }
     
-    folderInput.addEventListener('change', function(e) {
-        if (this.files && this.files.length > 0) {
-            // Получаем путь к первому выбранному файлу
-            var filePath = this.files[0].webkitRelativePath;
-            var folderPath = '';
-            
-            // Пытаемся получить полный путь
-            if (this.files[0].path) {
-                // В некоторых браузерах (Electron, старые Chrome) есть path
-                folderPath = this.files[0].path;
-                var lastSeparator = folderPath.lastIndexOf('\\');
-                if (lastSeparator > 0) {
-                    folderPath = folderPath.substring(0, lastSeparator);
-                }
-            } else if (this.value) {
-                // Стандартный способ - берем из значения
-                folderPath = this.value;
-                // Убираем имя файла, оставляем только папку
-                var lastSeparator = Math.max(folderPath.lastIndexOf('\\'), folderPath.lastIndexOf('/'));
-                if (lastSeparator > 0) {
-                    folderPath = folderPath.substring(0, lastSeparator);
-                }
-            }
-            
-            if (folderPath) {
-                document.getElementById('database_dir').value = folderPath;
-                // Сохраняем выбранный путь для следующего раза
-                saveBrowsePath(folderPath);
-                updateBackupDatabasePath();
-                alert('Выбрана папка: ' + folderPath + '\n\nТеперь укажите имя файла базы данных в поле выше.');
+    if (!confirm('ВНИМАНИЕ! Будет выполнено восстановление базы данных.\n\n' +
+                 'Это может занять несколько минут.\n\n' +
+                 'Продолжить?')) {
+        return;
+    }
+    
+    showProcessModal('🔄 Восстановление базы данных', 'Идет восстановление базы данных...', 'Подготовка...');
+    
+    var formData = new FormData(document.getElementById('restore-form'));
+    formData.append('ajax', '1');
+
+    fetch('<?php echo URL::site("dbsetting/restore"); ?>', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.text())
+    .then(text => {
+        // Закрываем модальное окно
+        try {
+            if (typeof $ !== 'undefined') {
+                $('#processModal').modal('hide');
             } else {
-                alert('Не удалось определить путь к папке. Пожалуйста, укажите путь вручную.');
-            }
-        }
-    });
-    
-    document.body.appendChild(folderInput);
-    folderInput.click();
-    document.body.removeChild(folderInput);
-}
-
-// Функция для сохранения пути обзора
-function saveBrowsePath(path) {
-    var formData = new FormData();
-    formData.append('browse_path', path);
-    formData.append('csrf_token', csrf_token);
-    
-    fetch('<?php echo URL::site("dbsetting/save_browse_path"); ?>', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    }).catch(error => console.log('Failed to save browse path:', error));
-}
-
-// Функция для сохранения папки резервных копий
-function saveBackupDir() {
-    var backupDir = document.getElementById('backup_dir').value;
-    if (!backupDir) {
-        alert('Пожалуйста, укажите папку для сохранения резервных копий.');
-        return;
-    }
-    
-    var saveBtn = event.target;
-    var originalText = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<span class="glyphicon glyphicon-refresh spinning"></span>';
-    saveBtn.disabled = true;
-    
-    var formData = new FormData();
-    formData.append('backup_dir', backupDir);
-    formData.append('csrf_token', csrf_token);
-    
-    fetch('<?php echo URL::site("dbsetting/save_backup_dir"); ?>', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        saveBtn.innerHTML = originalText;
-        saveBtn.disabled = false;
-        
-        if (data.success) {
-            alert('Папка для резервных копий сохранена: ' + backupDir);
-        } else {
-            alert('Ошибка: ' + data.message);
-        }
-    })
-    .catch(error => {
-        saveBtn.innerHTML = originalText;
-        saveBtn.disabled = false;
-        alert('Ошибка: ' + error.message);
-    });
-}
-
-// Функция для запуска бэкапа с прогрессом
-function startBackupWithProgress(event) {
-    event.preventDefault();
-    
-    var backupDir = document.getElementById('backup_dir').value;
-    var databasePath = document.getElementById('backup_database_path').value;
-    
-    if (!backupDir) {
-        alert('Пожалуйста, укажите папку для сохранения резервной копии.');
-        return false;
-    }
-    
-    if (!databasePath) {
-        alert('Пожалуйста, укажите путь к базе данных.');
-        return false;
-    }
-    
-    // Показываем модальное окно с прогрессом
-    $('#backupProgressModal').modal({
-        backdrop: 'static',
-        keyboard: false
-    });
-    
-    var outputArea = document.getElementById('backupOutput');
-    outputArea.innerHTML = 'Подключение к серверу...\n';
-    
-    var formData = new FormData();
-    formData.append('database_path', databasePath);
-    formData.append('backup_dir', backupDir);
-    formData.append('csrf_token', csrf_token);
-    
-    fetch('<?php echo URL::site("dbsetting/backup"); ?>', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-        }
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('HTTP error ' + response.status);
-        }
-        
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        
-        function readStream() {
-            reader.read().then(({done, value}) => {
-                if (done) {
-                    outputArea.innerHTML += '\n\n--- Резервное копирование завершено ---\n';
-                    document.getElementById('closeBackupModal').disabled = false;
-                    return;
+                var modal = document.getElementById('processModal');
+                if (modal) {
+                    modal.classList.remove('in');
+                    modal.style.display = 'none';
+                    document.body.classList.remove('modal-open');
+                    var backdrop = document.querySelector('.modal-backdrop');
+                    if (backdrop) backdrop.remove();
                 }
-                
-                const chunk = decoder.decode(value, {stream: true});
-                outputArea.innerHTML += chunk;
-                outputArea.scrollTop = outputArea.scrollHeight;
-                readStream();
-            }).catch(error => {
-                outputArea.innerHTML += '\n\nОшибка: ' + error.message + '\n';
-                document.getElementById('closeBackupModal').disabled = false;
-            });
-        }
+            }
+        } catch(e) {}
         
-        readStream();
+        if (text.indexOf('✅ База данных успешно восстановлена') !== -1) {
+            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
+            var targetDir = '<?php echo dirname($database_path); ?>';
+            var targetFile = '<?php echo basename($database_path); ?>';
+            
+            var msg = '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!\n\n';
+            if (fileMatch) msg += '📁 Восстановленный файл: ' + fileMatch[1] + '\n\n';
+            msg += '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:\n';
+            msg += '1. Остановить Firebird сервис\n';
+            msg += '2. Скопировать ' + (fileMatch ? fileMatch[1] : 'файл') + ' в папку\n';
+            msg += '   ' + targetDir + '\n';
+            msg += '3. Переименовать в ' + targetFile + '\n';
+            msg += '4. Запустить Firebird сервис';
+            alert(msg);
+            location.reload();
+        } else if (text.indexOf('❌ Ошибка') !== -1) {
+            alert('❌ Ошибка восстановления!\n\n' + text.replace(/\n/g, '\n'));
+        } else {
+            alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
+        }
     })
-    .catch(error => {
-        outputArea.innerHTML += '\n\nОшибка подключения: ' + error.message + '\n';
-        document.getElementById('closeBackupModal').disabled = false;
+    .catch(err => {
+        try {
+            if (typeof $ !== 'undefined') {
+                $('#processModal').modal('hide');
+            }
+        } catch(e) {}
+        alert('❌ Ошибка соединения: ' + err.message);
     });
-    
-    return false;
-}
-
-// Обновляем форму бэкапа при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    var backupForm = document.getElementById('backup-form');
-    if (backupForm) {
-        backupForm.onsubmit = startBackupWithProgress;
-    }
-});
-// // Monitor changes to directory and filename fields
-// document.addEventListener('DOMContentLoaded', function() {
-//     var dirField = document.getElementById('database_dir');
-//     var filenameField = document.getElementById('database_filename');
-    
-//     if (dirField) {
-//         dirField.addEventListener('change', updateBackupDatabasePath);
-//         dirField.addEventListener('keyup', updateBackupDatabasePath);
-//     }
-//     if (filenameField) {
-//         filenameField.addEventListener('change', updateBackupDatabasePath);
-//         filenameField.addEventListener('keyup', updateBackupDatabasePath);
-//     }
-    
-//     // Initial update
-//     updateBackupDatabasePath();
-    
-//     // Auto-refresh preview filename every second for timestamp
-//     function updatePreviewFilename() {
-//         var dbFilename = document.getElementById('database_filename').value;
-//         if (dbFilename) {
-//             var baseName = dbFilename.replace(/\.[^/.]+$/, '');
-//             var timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '').replace('T', '_');
-//             var previewSpan = document.querySelector('.well.well-sm');
-//             if (previewSpan) {
-//                 previewSpan.textContent = baseName + '_' + timestamp + '.fbk';
-//             }
-//         }
-//     }
-    
-//     // Update preview every second (for timestamp)
-//     setInterval(updatePreviewFilename, 1000);
-// });
-// Открыть папку с базой данных в проводнике
-function openDatabaseFolder() {
-    var dir = document.getElementById('database_dir').value.trim();
-    if (!dir) {
-        alert('Сначала сохраните путь к папке с базой данных!');
-        return;
-    }
-    
-    // Способ 1: через создание ссылки
-    var link = document.createElement('a');
-    link.href = 'file:///' + dir.replace(/\\/g, '/');
-    link.click();
-    
-    // Способ 2: через iframe (запасной)
-    var iframe = document.getElementById('explorerIframe');
-    if (iframe) {
-        iframe.src = 'file:///' + dir.replace(/\\/g, '/');
-    }
-    
-    alert('Проводник должен открыться.\nЕсли не открылся, скопируйте путь:\n' + dir);
-}
-
-// Открыть папку с бэкапами в проводнике
-function openBackupFolder() {
-    var dir = document.getElementById('backup_dir').value.trim();
-    if (!dir) {
-        alert('Сначала сохраните путь к папке резервного копирования!');
-        return;
-    }
-    
-    var link = document.createElement('a');
-    link.href = 'file:///' + dir.replace(/\\/g, '/');
-    link.click();
-    
-    var iframe = document.getElementById('explorerIframe');
-    if (iframe) {
-        iframe.src = 'file:///' + dir.replace(/\\/g, '/');
-    }
-    
-    alert('Проводник должен открыться.\nЕсли не открылся, скопируйте путь:\n' + dir);
 }
 </script>
