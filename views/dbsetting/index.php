@@ -10,16 +10,16 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                     </div>
 
     
-    <?php if (Session::instance()->get('flash_message')): ?>
+    <?php if (Session::instance()->get('flash_message_dbsetting')): ?>
         <?php
-        $flash = Session::instance()->get('flash_message');
+        $flash = Session::instance()->get('flash_message_dbsetting');
         $type = Arr::get($flash, 'type', 'info');
         $text = Arr::get($flash, 'text', '');
         $alert_class = 'alert-' . ($type === 'error' ? 'danger' : $type);
-        Session::instance()->delete('flash_message');
+        Session::instance()->delete('flash_message_dbsetting');
         ?>
         <div class="alert <?php echo $alert_class; ?>">
-            <?php echo HTML::chars($text); ?>
+            <?php echo $text; ?>
         </div>
     <?php endif; ?>
     
@@ -342,9 +342,8 @@ function confirmBackup() {
 
 // Confirm restore
 function confirmRestore() {
-    return confirm('ВНИМАНИЕ! Восстановление базы данных заменит текущую базу данных.\n\n' +
-                   'Рекомендуется сначала создать резервную копию.\n\n' +
-                   'Сервис Firebird будет временно остановлен.\n\n' +
+    return confirm('ВНИМАНИЕ! Будет выполнено восстановление базы данных в новый файл в папку, указанную в настройках.\n\n' +
+                   'Процесс может занимать длительное время\n\n' +
                    'Вы уверены, что хотите продолжить?');
 }
 

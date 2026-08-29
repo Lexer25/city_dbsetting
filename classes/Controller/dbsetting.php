@@ -12,9 +12,9 @@ class Controller_Dbsetting extends Controller_Template {
     
     // Available ODBC DSNs from Windows Registry
     protected $odbc_dsns;
-
-      // Database file paths for each DSN
-      protected $odbc_dsn_paths;
+    
+    // Database file paths for each DSN
+    protected $odbc_dsn_paths;
     
     // Current selected DSN (from session)
     protected $current_dsn;
@@ -22,8 +22,11 @@ class Controller_Dbsetting extends Controller_Template {
     // Database error message if connection fails
     protected $db_error = null;
     
-    // Allowed base paths for security
+    // Allowed base paths for security (reserved for future use)
     protected $allowed_base_paths = array();
+    
+    // Maximum backup file size in MB
+    protected $max_backup_size_mb = 2048;
     
     public function before()
     {
@@ -43,13 +46,16 @@ class Controller_Dbsetting extends Controller_Template {
         // Load module configuration
         $this->config = Kohana::$config->load('dbsetting');
         
-        // Define allowed paths for security
-        $this->allowed_base_paths = array();
+        // Get max backup size from config or use default
+        $this->max_backup_size_mb = $this->config->get('max_backup_size_mb', 2048);
         
         // Get ODBC DSNs from Windows Registry
         $this->odbc_dsns = $this->get_odbc_dsns_from_registry();
         // Get database paths for each DSN
-        $this->odbc_dsn_paths = array(); foreach ($this->odbc_dsns as $name => $dsn) { $this->odbc_dsn_paths[$name] = $this->get_database_path_for_dsn($name); }
+        $this->odbc_dsn_paths = array(); 
+        foreach ($this->odbc_dsns as $name => $dsn) { 
+            $this->odbc_dsn_paths[$name] = $this->get_database_path_for_dsn($name); 
+        }
         
         // Get current DSN from session or read from database.php
         $this->current_dsn = Session::instance()->get('current_dsn', $this->get_current_dsn_from_config());
@@ -65,9 +71,8 @@ class Controller_Dbsetting extends Controller_Template {
      * @return string Validated path or throws exception
      * @throws Exception
      */
-    
     protected function validate_path($path, $check_exists = false) {
-        // Remove null bytes и опасные символы
+        // Remove null bytes and dangerous characters
         $path = str_replace(chr(0), '', $path);
         
         // Decode URL encoding
@@ -76,14 +81,17 @@ class Controller_Dbsetting extends Controller_Template {
         // Normalize directory separators
         $path = str_replace('/', DIRECTORY_SEPARATOR, $path);
         
-        // Защита от path traversal (..)
+        // Expand Windows environment variables
+        $path = $this->expand_path_variables($path);
+        
+        // Protection from path traversal (..)
         $real_path = realpath($path);
         
         if ($real_path === false) {
             if ($check_exists) {
                 throw new Exception('Path does not exist: ' . $path);
             }
-            // Путь не существует, проверяем родительскую директорию
+            // Path doesn't exist, check parent directory
             $dir = dirname($path);
             $real_dir = realpath($dir);
             if ($real_dir === false) {
@@ -92,13 +100,141 @@ class Controller_Dbsetting extends Controller_Template {
             $real_path = $real_dir . DIRECTORY_SEPARATOR . basename($path);
         }
         
-        // Только проверка на path traversal (..) и опасные символы
-        // Без ограничения на разрешенные директории
+        // Only check for path traversal (..) and dangerous characters
+        // Without restriction on allowed directories
         if (strpos($real_path, '..') !== false) {
             throw new Exception('Path traversal detected');
         }
         
         return $real_path;
+    }
+    
+    /**
+     * Validate backup file extension
+     * @param string $file_path Path to backup file
+     * @return string Validated path
+     * @throws Exception
+     */
+    protected function validate_backup_file($file_path) {
+        $allowed_extensions = array('fbk', 'bak', 'backup', 'gdb');
+        $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        
+        if (!in_array($ext, $allowed_extensions)) {
+            throw new Exception('Invalid backup file extension. Allowed: ' . implode(', ', $allowed_extensions));
+        }
+        
+        return $this->validate_path($file_path, true);
+    }
+    
+    /**
+     * Validate DSN exists in registry
+     * @param string $dsn_name DSN name
+     * @return string DSN value
+     * @throws Exception
+     */
+    protected function validate_dsn($dsn_name) {
+        $dsns = $this->get_odbc_dsns_from_registry();
+        if (!isset($dsns[$dsn_name])) {
+            throw new Exception('DSN "' . $dsn_name . '" not found in registry');
+        }
+        return $dsns[$dsn_name];
+    }
+    
+    /**
+     * Expand Windows environment variables in path
+     * @param string $path Path with possible %VAR% variables
+     * @return string Path with expanded variables
+     */
+    protected function expand_path_variables($path) {
+        if (strpos($path, '%') !== false) {
+            // Replace Windows environment variables
+            preg_match_all('/%([^%]+)%/', $path, $matches);
+            foreach ($matches[1] as $var) {
+                $value = getenv($var);
+                if ($value !== false) {
+                    $path = str_replace('%' . $var . '%', $value, $path);
+                }
+            }
+        }
+        return $path;
+    }
+    
+    /**
+     * Check available disk space
+     * @param string $path Directory path
+     * @param int $required_mb Required space in MB
+     * @return bool
+     */
+		protected function check_disk_space($path, $required_mb = 50) {
+			// Проверяем, существует ли директория
+			if (!is_dir($path)) {
+				@mkdir($path, 0777, true);
+				if (!is_dir($path)) {
+					return true; // Не можем проверить - пропускаем
+				}
+			}
+    
+    // Получаем корень диска
+    $root_path = $path;
+    if (DIRECTORY_SEPARATOR === '\\') {
+        if (preg_match('/^[A-Za-z]:/', $path, $matches)) {
+            $root_path = $matches[0] . DIRECTORY_SEPARATOR;
+        } else {
+            return true; // UNC путь - пропускаем проверку
+        }
+    }
+    
+    $free_space = @disk_free_space($root_path);
+    if ($free_space === false) {
+        return true; // Не можем проверить - пропускаем
+    }
+    
+    $free_mb = $free_space / 1024 / 1024;
+    return $free_mb >= $required_mb;
+}
+    
+    /**
+     * Check database file size
+     * @param string $file_path Database file path
+     * @return bool
+     */
+    protected function check_database_size($file_path) {
+        if (!file_exists($file_path)) {
+            return true; // File doesn't exist, skip check
+        }
+        $size_mb = filesize($file_path) / 1024 / 1024;
+        return $size_mb <= $this->max_backup_size_mb;
+    }
+    
+    /**
+     * Rotate old backups (keep only N newest)
+     * @param string $backup_dir Backup directory
+     * @param int $keep_count Number of backups to keep
+     */
+    protected function rotate_backups($backup_dir, $keep_count = 10) {
+        if (!is_dir($backup_dir)) {
+            return;
+        }
+        
+        $files = glob($backup_dir . DIRECTORY_SEPARATOR . '*.{fbk,bak,backup,gdb}', GLOB_BRACE);
+        if (empty($files) || count($files) <= $keep_count) {
+            return;
+        }
+        
+        // Sort by modification time (oldest first)
+        usort($files, function($a, $b) {
+            return filemtime($a) - filemtime($b);
+        });
+        
+        // Remove oldest backups
+        $to_delete = array_slice($files, 0, count($files) - $keep_count);
+        foreach ($to_delete as $file) {
+            if (@unlink($file)) {
+                Log::instance()->add(Log::INFO, 'Removed old backup: ' . basename($file));
+            } else {
+                Log::instance()->add(Log::WARNING, 'Failed to remove old backup: ' . basename($file));
+            }
+        }
     }
     
     /**
@@ -108,7 +244,7 @@ class Controller_Dbsetting extends Controller_Template {
      */
     protected function validate_csrf($action) {
         $posted_token = $this->request->post('csrf_token');
-        $expected_token = md5(session_id() . 'dbsetting_' . $action);
+        $expected_token = $this->get_csrf_token($action);
         
         if ($posted_token !== $expected_token) {
             Log::instance()->add(Log::WARNING, 'CSRF validation failed for action: ' . $action);
@@ -123,7 +259,10 @@ class Controller_Dbsetting extends Controller_Template {
      * @return string
      */
     protected function get_csrf_token($action) {
-        return md5(session_id() . 'dbsetting_' . $action);
+        // Add salt and time-based component for stronger security
+        $salt = 'dbsetting_secure_salt_' . $action;
+        $time = floor(time() / 3600); // Changes every hour
+        return md5(session_id() . $salt . $time . Kohana::$config->load('dbsetting')->get('secret_key', ''));
     }
     
     /**
@@ -156,7 +295,7 @@ class Controller_Dbsetting extends Controller_Template {
                 foreach ($files as $file) {
                     if ($file === '.' || $file === '..') continue;
                     $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
-                    if (in_array($ext, array('fbk', 'bak', 'backup', 'gdb'))) {
+                    if (in_array($ext, array('fbk', 'gbk'))) {
                         $backup_files[] = $file;
                     }
                 }
@@ -198,7 +337,7 @@ class Controller_Dbsetting extends Controller_Template {
         if ($this->request->method() === 'POST') {
             // Validate CSRF
             if (!$this->validate_csrf('select_dsn')) {
-                Session::instance()->set('flash_message', array(
+                Session::instance()->set('flash_message_dbsetting', array(
                     'type' => 'error',
                     'text' => __('Security token validation failed. Please refresh the page and try again.')
                 ));
@@ -208,26 +347,27 @@ class Controller_Dbsetting extends Controller_Template {
             
             $selected = $this->request->post('dsn');
             
-            if (array_key_exists($selected, $this->odbc_dsns)) {
-                $dsn_value = $this->odbc_dsns[$selected];
+            try {
+                // Validate DSN exists
+                $dsn_value = $this->validate_dsn($selected);
                 
                 Session::instance()->set('current_dsn', $dsn_value);
                 
                 if ($this->update_database_config($dsn_value)) {
-                    Session::instance()->set('flash_message', array(
+                    Session::instance()->set('flash_message_dbsetting', array(
                         'type' => 'success',
-                        'text' => __('Database DSN changed to ') . $selected . ' and saved to config file'
+                        'text' => __('Database DSN changed to ') . htmlspecialchars($selected) . ' and saved to config file'
                     ));
                 } else {
-                    Session::instance()->set('flash_message', array(
+                    Session::instance()->set('flash_message_dbsetting', array(
                         'type' => 'error',
                         'text' => __('Failed to update database configuration file. Check logs for details.')
                     ));
                 }
-            } else {
-                Session::instance()->set('flash_message', array(
+            } catch (Exception $e) {
+                Session::instance()->set('flash_message_dbsetting', array(
                     'type' => 'error',
-                    'text' => __('Invalid DSN selected.')
+                    'text' => $e->getMessage()
                 ));
             }
         }
@@ -258,7 +398,7 @@ class Controller_Dbsetting extends Controller_Template {
                 )));
                 return;
             } else {
-                Session::instance()->set('flash_message', array(
+                Session::instance()->set('flash_message_dbsetting', array(
                     'type' => 'error',
                     'text' => $error
                 ));
@@ -279,6 +419,14 @@ class Controller_Dbsetting extends Controller_Template {
             // Validate path
             $database_path = $this->validate_path($database_path, false);
             $file_exists = file_exists($database_path);
+            
+            // Check database size
+            if ($file_exists && !$this->check_database_size($database_path)) {
+                $this->send_json_response(false, 
+                    __('Database file is too large (>') . $this->max_backup_size_mb . __(' MB)')
+                );
+                return;
+            }
             
             // Update module configuration
             $success = $this->update_module_database_path($database_path);
@@ -336,6 +484,14 @@ class Controller_Dbsetting extends Controller_Template {
             $new_database_path = rtrim($database_dir, '\\/') . DIRECTORY_SEPARATOR . $database_filename;
             
             $file_exists = file_exists($new_database_path);
+            
+            // Check database size
+            if ($file_exists && !$this->check_database_size($new_database_path)) {
+                $this->send_json_response(false, 
+                    __('Database file is too large (>') . $this->max_backup_size_mb . __(' MB)')
+                );
+                return;
+            }
             
             // Update module configuration
             $success = $this->update_module_database_path($new_database_path);
@@ -403,6 +559,14 @@ class Controller_Dbsetting extends Controller_Template {
             
             $file_exists = file_exists($new_database_path);
             
+            // Check database size
+            if ($file_exists && !$this->check_database_size($new_database_path)) {
+                $this->send_json_response(false, 
+                    __('Database file is too large (>') . $this->max_backup_size_mb . __(' MB)')
+                );
+                return;
+            }
+            
             // Update module configuration
             $success = $this->update_module_database_path($new_database_path);
             
@@ -433,103 +597,164 @@ class Controller_Dbsetting extends Controller_Template {
     }
     
     /**
-     * Create database backup
-     */
-    /**
      * Create database backup with live output
      */
-    public function action_backup()
-    {
-        if ($this->request->method() !== 'POST') {
-            $this->redirect('dbsetting');
-            return;
-        }
-
-        if (!$this->validate_csrf('backup')) {
-            $this->send_json_response(false, 'CSRF validation failed');
-            return;
-        }
-
-        $firebird_bin = $this->config->get('firebird_bin');
-        $firebird_password = $this->config->get('firebird_password', '');
-
-        if (empty($firebird_password)) {
-            $this->send_json_response(false, 'Firebird password not configured');
-            return;
-        }
-
-        $database_path = Arr::get($_POST, 'database_path');
-        $backup_dir = Arr::get($_POST, 'backup_dir');
-
-        try {
-            $database_path = $this->validate_path($database_path, true);
-            $backup_dir = $this->validate_path($backup_dir, false);
-        } catch (Exception $e) {
-            $this->send_json_response(false, 'Path validation failed: ' . $e->getMessage());
-            return;
-        }
-
-        if (!is_dir($backup_dir)) {
-            if (!mkdir($backup_dir, 0777, true)) {
-                $this->send_json_response(false, 'Failed to create backup directory');
-                return;
-            }
-        }
-
-        $db_filename = pathinfo($database_path, PATHINFO_FILENAME);
-        $timestamp = date('Y-m-d_His');
-        $backup_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.fbk';
-
-        $gbak_path = rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe';
-        if (!file_exists($gbak_path)) {
-            $this->send_json_response(false, 'gbak.exe not found');
-            return;
-        }
-
-        $gbak = escapeshellarg($gbak_path);
-        $db = '127.0.0.1:' . escapeshellarg($database_path);
-        $backup = escapeshellarg($backup_file);
-
-        $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' .
-                escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
-
-        Log::instance()->add(Log::INFO, 'Backup started: ' . $backup_file);
-
-        if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
-            header('Content-Type: text/plain; charset=utf-8');
-            header('X-Accel-Buffering: no');
-            ob_end_clean();
-            flush();
-
-            echo "=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===\n";
-            echo "База данных: " . $database_path . "\n";
-            echo "Сохраняем в: " . $backup_file . "\n\n";
-            flush();
-
-            $output = [];
-            $return_var = null;
-            exec($command . ' 2>&1', $output, $return_var);
-
-            foreach ($output as $line) {
-                echo htmlspecialchars($line) . "\n";
-                flush();
-            }
-
-            echo "\n=== ЗАВЕРШЕНО ===\n";
-            echo "Код возврата: " . $return_var . "\n";
-            
-            if ($return_var === 0) {
-                echo "✅ Резервная копия успешно создана!\n";
-            } else {
-                echo "❌ Ошибка! Код: $return_var\n";
-            }
-            exit;
-        }
-
-        // Fallback (если не AJAX)
-        exec($command, $output, $return_var);
+/**
+ * Create database backup with live output and log file
+ */
+public function action_backup()
+{
+    if ($this->request->method() !== 'POST') {
         $this->redirect('dbsetting');
+        return;
     }
+
+    if (!$this->validate_csrf('backup')) {
+        $this->send_json_response(false, 'CSRF validation failed');
+        return;
+    }
+
+    $firebird_bin = $this->config->get('firebird_bin');
+    $firebird_password = $this->config->get('firebird_password', '');
+
+    if (empty($firebird_password)) {
+        $this->send_json_response(false, 'Firebird password not configured');
+        return;
+    }
+
+    $database_path = Arr::get($_POST, 'database_path');
+    $backup_dir = Arr::get($_POST, 'backup_dir');
+
+    try {
+        $database_path = $this->validate_path($database_path, true);
+        $backup_dir = $this->validate_path($backup_dir, false);
+    } catch (Exception $e) {
+        $this->send_json_response(false, 'Path validation failed: ' . $e->getMessage());
+        return;
+    }
+
+    // Check database size before backup
+    if (!file_exists($database_path)) {
+        $this->send_json_response(false, 'Database file does not exist: ' . $database_path);
+        return;
+    }
+    
+    if (!$this->check_database_size($database_path)) {
+        $this->send_json_response(false, 
+            'Database file is too large (>' . $this->max_backup_size_mb . ' MB). Backup not recommended.'
+        );
+        return;
+    }
+
+    // Check disk space
+    if (!$this->check_disk_space($backup_dir, 100)) {
+        $this->send_json_response(false, 
+            'Not enough disk space (minimum 100 MB required)'
+        );
+        return;
+    }
+
+    if (!is_dir($backup_dir)) {
+        if (!mkdir($backup_dir, 0777, true)) {
+            $this->send_json_response(false, 'Failed to create backup directory');
+            return;
+        }
+    }
+
+    // Rotate old backups (keep last 10)
+    $keep_count = $this->config->get('max_backup_files', 10);
+    $this->rotate_backups($backup_dir, $keep_count);
+
+    $db_filename = pathinfo($database_path, PATHINFO_FILENAME);
+    $timestamp = date('Y-m-d_His');
+    $backup_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.fbk';
+    $log_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.log';
+
+    $gbak_path = rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe';
+    if (!file_exists($gbak_path)) {
+        $this->send_json_response(false, 'gbak.exe not found at: ' . $gbak_path);
+        return;
+    }
+
+    $gbak = escapeshellarg($gbak_path);
+    $db = '127.0.0.1:' . escapeshellarg($database_path);
+    $backup = escapeshellarg($backup_file);
+
+    $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' .
+            escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
+
+    Log::instance()->add(Log::INFO, 'Backup started: ' . $backup_file);
+    Log::instance()->add(Log::INFO, 'Backup log file: ' . $log_file);
+
+    if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
+        header('Content-Type: text/plain; charset=utf-8');
+        header('X-Accel-Buffering: no');
+        ob_end_clean();
+        flush();
+
+        echo "=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===\n";
+        echo "База данных: " . htmlspecialchars($database_path) . "\n";
+        echo "Сохраняем в: " . htmlspecialchars($backup_file) . "\n";
+        echo "Лог будет сохранен: " . htmlspecialchars($log_file) . "\n";
+        echo "Размер БД: " . round(filesize($database_path) / 1024 / 1024, 2) . " MB\n\n";
+        flush();
+
+        $output = array();
+        $return_var = null;
+        exec($command . ' 2>&1', $output, $return_var);
+
+        // Сохраняем лог в файл
+        $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ ===\n";
+        $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
+        $log_content .= "База данных: " . $database_path . "\n";
+        $log_content .= "Резервная копия: " . $backup_file . "\n";
+        $log_content .= "Команда: " . $command . "\n";
+        $log_content .= "Код возврата: " . $return_var . "\n";
+        $log_content .= "=== ВЫВОД GBAG ===\n";
+        $log_content .= implode("\n", $output) . "\n";
+        $log_content .= "=== ЗАВЕРШЕНО ===\n";
+        
+        file_put_contents($log_file, $log_content, LOCK_EX);
+
+        foreach ($output as $line) {
+            echo htmlspecialchars($line) . "\n";
+            flush();
+        }
+
+        echo "\n=== ЗАВЕРШЕНО ===\n";
+        echo "Код возврата: " . $return_var . "\n";
+        echo "Лог сохранен: " . htmlspecialchars(basename($log_file)) . "\n";
+        
+        if ($return_var === 0) {
+            $backup_size = round(filesize($backup_file) / 1024 / 1024, 2);
+            echo "✅ Резервная копия успешно создана!\n";
+            echo "Размер: " . $backup_size . " MB\n";
+            echo "Файл: " . htmlspecialchars(basename($backup_file)) . "\n";
+        } else {
+            echo "❌ Ошибка! Код: $return_var\n";
+            echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
+            Log::instance()->add(Log::ERROR, 'Backup failed with code ' . $return_var . '. Log saved to: ' . $log_file);
+        }
+        exit;
+    }
+
+    // Fallback (if not AJAX)
+    exec($command, $output, $return_var);
+    
+    // Сохраняем лог и для fallback
+    $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ (FALLBACK) ===\n";
+    $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
+    $log_content .= "База данных: " . $database_path . "\n";
+    $log_content .= "Резервная копия: " . $backup_file . "\n";
+    $log_content .= "Код возврата: " . $return_var . "\n";
+    $log_content .= "=== ВЫВОД GBAG ===\n";
+    $log_content .= implode("\n", $output) . "\n";
+    
+    file_put_contents($log_file, $log_content, LOCK_EX);
+    
+    $this->redirect('dbsetting');
+}
+    
     /**
      * Save backup directory
      */
@@ -556,6 +781,14 @@ class Controller_Dbsetting extends Controller_Template {
 
         try {
             $backup_dir = $this->validate_path($backup_dir, false);
+
+            // Check disk space for backup directory
+            if (!$this->check_disk_space($backup_dir, 500)) {
+                $this->send_json_response(false, 
+                    __('Warning: Low disk space on backup drive (less than 500 MB)')
+                );
+                return;
+            }
 
             $module_config_path = MODPATH . 'dbsetting/config/dbsetting.php';
             $content = file_get_contents($module_config_path);
@@ -584,103 +817,176 @@ class Controller_Dbsetting extends Controller_Template {
         }
     }
     
-    /**
-     * Restore database from backup
-     */
-    public function action_restore()
-    {
-        if ($this->request->method() !== 'POST') {
-            $this->redirect('dbsetting');
-            return;
-        }
-        
-        // Validate CSRF
-        if (!$this->validate_csrf('restore')) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Security token validation failed.')
-            ));
-            $this->redirect('dbsetting');
-            return;
-        }
-        
-        $backup_file = $this->request->post('backup_file');
-        $firebird_bin = $this->config->get('firebird_bin');
-        $firebird_password = $this->config->get('firebird_password', '');
-        $restore_dir = $this->config->get('restore_path');
-        $database_path = $this->config->get('database_path');
-        
-        // Validate password
-        if (empty($firebird_password)) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Firebird password not configured.')
-            ));
-            $this->redirect('dbsetting');
-            return;
-        }
-        
-        try {
-            $backup_file = $this->validate_path($backup_file, true);
-            $restore_dir = $this->validate_path($restore_dir, false);
-        } catch (Exception $e) {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Path validation failed: ') . $e->getMessage()
-            ));
-            $this->redirect('dbsetting');
-            return;
-        }
-        
-        // Determine extension from database_path (if it's a file) or default to GDB
-        $extension = 'GDB';
-        if (!empty($database_path)) {
-            $db_info = pathinfo($database_path);
-            if (isset($db_info['extension']) && !empty($db_info['extension'])) {
-                $extension = $db_info['extension'];
-            }
-        }
-        
-        // Generate new restore path based on backup filename
-        $backup_info = pathinfo($backup_file);
-        $new_filename = $backup_info['filename'] . '.' . $extension;
-        $new_restore_path = rtrim($restore_dir, '\\/') . DIRECTORY_SEPARATOR . $new_filename;
-        
-        // Stop service before restore
-        //$this->stop_service();
-        
-        $gbak = escapeshellarg(rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe');
-        $backup = escapeshellarg($backup_file);
-        $restore = '127.0.0.1:' . escapeshellarg($new_restore_path);
-        
-        $command = $gbak . ' -c -o -v -r -user SYSDBA -password ' . escapeshellarg($firebird_password) . ' ' . $backup . ' ' . $restore;
-        
-        exec($command, $output, $return_var);
-        
-        // Start service after restore
-        //$this->start_service();
-        
-        if ($return_var === 0) {
-            // Update configuration to new database path
-            $this->update_module_database_path($new_restore_path);
-            
-            $backup_basename = basename($backup_file);
-            $restored_basename = basename($new_restore_path);
-            
-            Session::instance()->set('flash_message', array(
-                'type' => 'success',
-                'text' => __('Database restored successfully from ') . $backup_basename . __(' to ') . $restored_basename
-            ));
-        } else {
-            Session::instance()->set('flash_message', array(
-                'type' => 'error',
-                'text' => __('Restore failed. Error code: ') . $return_var
-            ));
-            Log::instance()->add(Log::ERROR, 'Restore failed. Command: ' . $command);
-        }
-        
+
+/**
+ * Restore database from backup with log file
+ */
+/**
+ * Restore database from backup
+ * Восстанавливает БД в restore_path, НЕ меняет database_path
+ */
+public function action_restore()
+{
+    if ($this->request->method() !== 'POST') {
         $this->redirect('dbsetting');
+        return;
     }
+    
+    // Validate CSRF
+    if (!$this->validate_csrf('restore')) {
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => __('Security token validation failed.')
+        ));
+        $this->redirect('dbsetting');
+        return;
+    }
+    
+    $backup_file = $this->request->post('backup_file');
+    $firebird_bin = $this->config->get('firebird_bin');
+    $firebird_password = $this->config->get('firebird_password', '');
+    $restore_dir = $this->config->get('restore_path');
+    $database_path = $this->config->get('database_path');
+    
+    // Validate password
+    if (empty($firebird_password)) {
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => __('Firebird password not configured.')
+        ));
+        $this->redirect('dbsetting');
+        return;
+    }
+    
+    try {
+        // Validate backup file with extension check
+        $backup_file = $this->validate_backup_file($backup_file);
+        $restore_dir = $this->validate_path($restore_dir, false);
+    } catch (Exception $e) {
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => __('Path validation failed: ') . $e->getMessage()
+        ));
+        $this->redirect('dbsetting');
+        return;
+    }
+    
+    // Check backup file size
+    $backup_size_mb = filesize($backup_file) / 1024 / 1024;
+    if ($backup_size_mb > $this->max_backup_size_mb) {
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => __('Backup file is too large (') . round($backup_size_mb, 2) . __(' MB). Maximum: ') . $this->max_backup_size_mb . __(' MB')
+        ));
+        $this->redirect('dbsetting');
+        return;
+    }
+    
+    // Check disk space for restore
+    if (!$this->check_disk_space($restore_dir, ($backup_size_mb * 2) + 100)) {
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => __('Not enough disk space for restore (need at least ') . round(($backup_size_mb * 2) + 100, 0) . __(' MB)')
+        ));
+        $this->redirect('dbsetting');
+        return;
+    }
+    
+    // Формируем имя для восстановленной БД
+    $backup_info = pathinfo($backup_file);
+    $timestamp = date('Y-m-d_His');
+    $new_filename = $backup_info['filename'] . '_restored_' . $timestamp . '.gdb';
+    $new_restore_path = rtrim($restore_dir, '\\/') . DIRECTORY_SEPARATOR . $new_filename;
+    
+    // Создаем лог файл рядом с резервной копией
+    $log_file = dirname($backup_file) . DIRECTORY_SEPARATOR . 
+                $backup_info['filename'] . '_restore_' . $timestamp . '.log';
+    
+    $gbak = escapeshellarg(rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe');
+    $backup = escapeshellarg($backup_file);
+    $restore = '127.0.0.1:' . escapeshellarg($new_restore_path);
+    
+    $command = $gbak . ' -c -o -v -r -user SYSDBA -password ' . 
+               escapeshellarg($firebird_password) . ' ' . $backup . ' ' . $restore;
+    
+    // Выполняем команду и получаем полный вывод
+    exec($command . ' 2>&1', $output, $return_var);
+    
+    // Полный вывод gbak для лога
+    $full_output = implode("\n", $output);
+    
+    // Сохраняем лог восстановления
+    $log_content = "=== ВОССТАНОВЛЕНИЕ БАЗЫ ДАННЫХ ===\n";
+    $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
+    $log_content .= "Файл бэкапа: " . $backup_file . "\n";
+    $log_content .= "Восстановлен в: " . $new_restore_path . "\n";
+    $log_content .= "Команда: " . $command . "\n";
+    $log_content .= "Код возврата: " . $return_var . "\n";
+    $log_content .= "=== ВЫВОД GBAK ===\n";
+    $log_content .= $full_output . "\n";
+    $log_content .= "=== ЗАВЕРШЕНО ===\n";
+    
+    file_put_contents($log_file, $log_content, LOCK_EX);
+    
+    // Логируем в системный лог
+    Log::instance()->add(Log::INFO, 'Restore completed. Return code: ' . $return_var);
+    Log::instance()->add(Log::INFO, 'Restore log saved to: ' . $log_file);
+    
+    if ($return_var === 0) {
+        // ============================================================
+        // ВАЖНО: НЕ МЕНЯЕМ database_path В КОНФИГЕ!
+        // Пользователь САМ заменит файл в Program Files вручную
+        // ============================================================
+        
+        $backup_basename = basename($backup_file);
+        $restored_basename = basename($new_restore_path);
+        $log_basename = basename($log_file);
+        $target_dir = dirname($database_path);
+        $target_file = basename($database_path);
+        
+		Session::instance()->set('flash_message_dbsetting', array(
+			'type' => 'success',
+			    'text' => 
+        '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!<br><br>' .
+        '📁 Восстановленный файл: ' . $new_restore_path . '<br>' .
+        '📄 Лог: ' . $log_basename . '<br><br>' .
+        '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>' .
+        '1. Остановить Firebird сервис<br>' .
+        '2. Скопировать ' . $restored_basename . ' в папку<br>' .
+        '&nbsp;&nbsp;' . $target_dir . '<br>' .
+        '3. Переименовать в ' . $target_file . '<br>' .
+        '4. Запустить Firebird сервис<br><br>'
+		));
+		
+        
+        // Сохраняем путь к восстановленной БД в сессию для возможности автоматической замены
+        Session::instance()->set('restored_db_file', $new_restore_path);
+        Session::instance()->set('restored_db_log', $log_file);
+        
+    } else {
+        // Извлекаем ошибку из вывода
+        $error_lines = array_filter($output, function($line) {
+            return stripos($line, 'error') !== false || 
+                   stripos($line, 'fail') !== false || 
+                   stripos($line, 'unable') !== false ||
+                   stripos($line, 'cannot') !== false;
+        });
+        
+        $error_msg = !empty($error_lines) ? implode('; ', $error_lines) : 'Unknown error (check log file for details)';
+        
+        Session::instance()->set('flash_message_dbsetting', array(
+            'type' => 'error',
+            'text' => '❌ Ошибка восстановления! Код: ' . $return_var . 
+                      '. Ошибка: ' . htmlspecialchars($error_msg) . 
+                      '. Подробности в логе: ' . htmlspecialchars(basename($log_file))
+        ));
+        Log::instance()->add(Log::ERROR, 'Restore failed. Return code: ' . $return_var);
+        Log::instance()->add(Log::ERROR, 'Restore log: ' . $log_file);
+        Log::instance()->add(Log::ERROR, 'Restore error details: ' . $error_msg);
+    }
+    
+    $this->redirect('dbsetting');
+}
     
     /**
      * Find the correct Firebird service name
@@ -750,7 +1056,7 @@ class Controller_Dbsetting extends Controller_Template {
     {
         // Validate CSRF
         if (!$this->validate_csrf('service')) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Security token validation failed.')
             ));
@@ -761,7 +1067,7 @@ class Controller_Dbsetting extends Controller_Template {
         $service = $this->find_firebird_service();
         
         if (!$service) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Firebird service not found.')
             ));
@@ -774,12 +1080,12 @@ class Controller_Dbsetting extends Controller_Template {
         exec($command, $output, $return_var);
         
         if ($return_var === 0) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'success',
                 'text' => __('Firebird service stopped.')
             ));
         } else {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Failed to stop service.')
             ));
@@ -795,7 +1101,7 @@ class Controller_Dbsetting extends Controller_Template {
     {
         // Validate CSRF
         if (!$this->validate_csrf('service')) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Security token validation failed.')
             ));
@@ -806,7 +1112,7 @@ class Controller_Dbsetting extends Controller_Template {
         $service = $this->find_firebird_service();
         
         if (!$service) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Firebird service not found.')
             ));
@@ -819,12 +1125,12 @@ class Controller_Dbsetting extends Controller_Template {
         exec($command, $output, $return_var);
         
         if ($return_var === 0) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'success',
                 'text' => __('Firebird service started.')
             ));
         } else {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => __('Failed to start service.')
             ));
@@ -905,7 +1211,7 @@ class Controller_Dbsetting extends Controller_Template {
      * @param string $dsn_name DSN name
      * @return string Path to database file or empty string if not found
      */
-            protected function get_database_path_for_dsn($dsn_name)
+    protected function get_database_path_for_dsn($dsn_name)
     {
         $registry_paths = array(
             'HKEY_CURRENT_USER\Software\ODBC\ODBC.INI\\' . $dsn_name,
@@ -925,7 +1231,8 @@ class Controller_Dbsetting extends Controller_Template {
                         if (preg_match('/REG_SZ\s+(.*)/', $line, $matches)) {
                             $path = trim($matches[1]);
                             if (!empty($path)) {
-                                return $path;
+                                // Expand environment variables in path
+                                return $this->expand_path_variables($path);
                             }
                         }
                     }
@@ -935,7 +1242,6 @@ class Controller_Dbsetting extends Controller_Template {
         
         return '';
     }
-
     
     /**
      * Get current DSN from database.php config file
@@ -1049,15 +1355,15 @@ class Controller_Dbsetting extends Controller_Template {
         
         $escaped_path = str_replace("'", "\\'", $database_path);
         
-        // Улучшенная замена — работает даже если значение не изменилось
+        // Improved replacement - works even if value hasn't changed
         $pattern = "/^(?!\\s*\\/\\/)(\\s*['\"]database_path['\"]\\s*=>\\s*['\"])[^'\"]*(['\"])/m";
         $replacement = "\$1$escaped_path\$2";
         
         $new_content = preg_replace($pattern, $replacement, $content);
         
-        // Если ничего не изменилось — всё равно считаем успехом (чтобы не было ошибки)
+        // If nothing changed - still consider it success (to avoid errors)
         if ($new_content === $content) {
-            // Проверяем, действительно ли значение уже правильное
+            // Check if value is already correct
             if (strpos($content, "'database_path' => '{$escaped_path}'") !== false ||
                 strpos($content, '"database_path" => "' . $database_path . '"') !== false) {
                 Kohana::$config->load('dbsetting', true);
@@ -1066,7 +1372,7 @@ class Controller_Dbsetting extends Controller_Template {
             Log::instance()->add(Log::WARNING, 'Could not update database_path in config, but value may already be correct');
         }
         
-        // Создаём бэкап перед записью
+        // Create backup before writing
         $backup_path = $module_config_path . '.backup_' . date('Y-m-d_His');
         @copy($module_config_path, $backup_path);
         
@@ -1114,7 +1420,7 @@ class Controller_Dbsetting extends Controller_Template {
         
         // Validate CSRF
         if (!$this->validate_csrf('config_edit')) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Ошибка проверки токена безопасности. Пожалуйста, попробуйте снова.'
             ));
@@ -1126,7 +1432,7 @@ class Controller_Dbsetting extends Controller_Template {
         $module_config_path = MODPATH . 'dbsetting/config/dbsetting.php';
         
         if (empty($config_content) || !file_exists($module_config_path)) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Неверная конфигурация или файл не найден.'
             ));
@@ -1136,7 +1442,7 @@ class Controller_Dbsetting extends Controller_Template {
         
         // Validate PHP syntax before saving
         if (strpos($config_content, '<?php') === false) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Конфигурация должна начинаться с PHP открывающего тега &lt;?php'
             ));
@@ -1146,12 +1452,21 @@ class Controller_Dbsetting extends Controller_Template {
         
         // Check PHP syntax by evaluating in a temporary file
         $temp_file = tempnam(sys_get_temp_dir(), 'cfg_');
+        if ($temp_file === false) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => 'Не удалось создать временный файл для проверки синтаксиса.'
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
         file_put_contents($temp_file, $config_content);
         $syntax_check = shell_exec('php -l ' . escapeshellarg($temp_file) . ' 2>&1');
         unlink($temp_file);
         
         if (strpos($syntax_check, 'No syntax errors') === false) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Синтаксическая ошибка PHP в конфигурации: ' . nl2br(HTML::chars($syntax_check))
             ));
@@ -1161,7 +1476,7 @@ class Controller_Dbsetting extends Controller_Template {
         
         // Check if writable
         if (!is_writable($module_config_path)) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Файл конфигурации недоступен для записи. Проверьте права доступа.'
             ));
@@ -1177,13 +1492,13 @@ class Controller_Dbsetting extends Controller_Template {
         $result = file_put_contents($module_config_path, $config_content, LOCK_EX);
         
         if ($result === false) {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'error',
                 'text' => 'Не удалось сохранить файл конфигурации.'
             ));
             Log::instance()->add(Log::ERROR, 'Failed to write module config file: ' . $module_config_path);
         } else {
-            Session::instance()->set('flash_message', array(
+            Session::instance()->set('flash_message_dbsetting', array(
                 'type' => 'success',
                 'text' => 'Конфигурация успешно сохранена. Резервная копия: ' . basename($backup_path)
             ));

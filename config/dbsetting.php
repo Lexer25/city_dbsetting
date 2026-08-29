@@ -1,22 +1,22 @@
 <?php defined('SYSPATH') or die('No direct script access.');
 
 return array(
-    'backup_dir' => 'C:\Tes1111t',
-    // Path to Firebird bin directory (gbak, isql, etc.)
+    
+    // Путь к Firebird директорию (gbak, isql, etc.)
     // Для Firebird 1.5.6 обычно используется именно этот путь
     'firebird_bin' => 'C:\\Program Files (x86)\\Firebird\\Firebird_1_5_6\\bin',
     
-    // Firebird database password for SYSDBA user
+    // Пароль для SYSDBA user
     'firebird_password' => 'temp',  // Установите ваш реальный пароль!
     
-    // Default database file path (used for backup/restore)
+    // путь к базе данных, для которой надо сделать резервную копию. (used for backup/restore)
     'database_path' => 'C:\Program Files (x86)\Cardsoft\DuoSE\Access\ShieldPro_rest.gdb',
+	
+	// Куда сохранять резервную копию
+    'backup_dir' => 'C:\\Test',
     
-    // Restore directory (where restored database files will be placed)
-    'restore_path' => 'D:\\rrr\\hl\\restore22',
-    
-    // Backup directory
-    'backup_dir' => 'C:\Test',
+    // Куда сохранять восстановленную базу данных. (where restored database files will be placed)
+    'restore_path' => 'C:\\Test',
     
     // Firebird service name (для Firebird 1.5.6)
     'service_name' => 'FirebirdGuardianDefaultInstance',

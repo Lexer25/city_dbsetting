@@ -1,0 +1,5 @@
+history modiles dbsetting
+Вер. 1.0.6
+29.08.2026
+[*]
+Выполнены доработки в части restore.
