@@ -9,18 +9,25 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
         <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
     </div>
 
-    <?php if (Session::instance()->get('flash_message_dbsetting')): ?>
-        <?php
-        $flash = Session::instance()->get('flash_message_dbsetting');
-        $type = Arr::get($flash, 'type', 'info');
-        $text = Arr::get($flash, 'text', '');
-        $alert_class = 'alert-' . ($type === 'error' ? 'danger' : $type);
-        Session::instance()->delete('flash_message_dbsetting');
-        ?>
-        <div class="alert <?php echo $alert_class; ?>">
-            <?php echo $text; ?>
-        </div>
-    <?php endif; ?>
+<?php if (Session::instance()->get('flash_message_dbsetting')): ?>
+    <?php
+    $flash = Session::instance()->get('flash_message_dbsetting');
+    $type = Arr::get($flash, 'type', 'info');
+    $text = Arr::get($flash, 'text', '');
+    $alert_class = 'alert-' . ($type === 'error' ? 'danger' : $type);
+    Session::instance()->delete('flash_message_dbsetting');
+    ?>
+    <!-- ============================================ -->
+    <!-- FLASH-СООБЩЕНИЕ С КРЕСТИКОМ ДЛЯ ЗАКРЫТИЯ -->
+    <!-- ============================================ -->
+    <div id="flash-result" class="alert <?php echo $alert_class; ?> alert-dismissible fade in" role="alert">
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+        <?php echo $text; ?>
+    </div>
+    <!-- ============================================ -->
+<?php endif; ?>
 
     <?php if (isset($db_error) && !empty($db_error)): ?>
         <div class="alert alert-warning">
@@ -781,4 +788,22 @@ function openBackupFolder() {
     
     alert('Проводник должен открыться.\nЕсли не открылся, скопируйте путь:\n' + dir);
 }
+
+// ============================================
+// АВТОМАТИЧЕСКАЯ ПРОКРУТКА К ВЕРХУ СТРАНИЦЫ
+// ============================================
+$(document).ready(function() {
+    // Ищем любое flash-сообщение (успех, ошибка, предупреждение)
+    var $flash = $('.alert.alert-success, .alert.alert-danger, .alert.alert-warning, .alert.alert-info');
+    
+    if ($flash.length > 0) {
+        // Даем странице полностью загрузиться
+        setTimeout(function() {
+            // Прокручиваем к самому верху страницы
+            $('html, body').animate({
+                scrollTop: 0
+            }, 400);
+        }, 150);
+    }
+});
 </script>
