@@ -315,7 +315,14 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                     </div>
                     <h4 style="margin-top: 20px;" id="processModalTitle">Выполняется операция...</h4>
                     <p class="text-muted" id="processModalText">Пожалуйста, подождите. Это может занять несколько минут.</p>
-                    <div id="processModalStatus" style="margin-top: 15px; font-size: 13px; color: #666;"></div>
+                    <!-- ============================================ -->
+                    <!-- ТАЙМЕР -->
+                    <!-- ============================================ -->
+                    <div id="processTimer" style="margin-top: 15px; font-size: 18px; font-weight: bold; color: #007bff;">
+                        ⏱️ 00:00
+                    </div>
+                    <!-- ============================================ -->
+                    <div id="processModalStatus" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
                 </div>
                 <div class="modal-footer" style="text-align: center; border-top: none; padding-top: 0;">
                     <button type="button" class="btn btn-default" id="processModalClose" disabled style="display:none;">
@@ -359,9 +366,40 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
 }
 .text-primary { color: #007bff; }
 </style>
+
 <script>
-// Показать модальное окно
+// CSRF token for AJAX requests
+var csrf_token = '<?php echo $csrf_token_path; ?>';
+console.log('dbsetting script loaded');
+
+// ============================================
+// ПЕРЕМЕННЫЕ ДЛЯ ТАЙМЕРА
+// ============================================
+var timerInterval = null;
+var timerSeconds = 0;
+
+// ============================================
+// ФУНКЦИИ ДЛЯ МОДАЛЬНОГО ОКНА С ТАЙМЕРОМ
+// ============================================
+
+// Показать модальное окно с таймером
 function showProcessModal(title, text, status) {
+    // Сбрасываем таймер
+    timerSeconds = 0;
+    document.getElementById('processTimer').textContent = '⏱️ 00:00';
+    
+    // Запускаем таймер
+    if (timerInterval) {
+        clearInterval(timerInterval);
+    }
+    timerInterval = setInterval(function() {
+        timerSeconds++;
+        var minutes = Math.floor(timerSeconds / 60);
+        var seconds = timerSeconds % 60;
+        var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        document.getElementById('processTimer').textContent = '⏱️ ' + timeStr;
+    }, 1000);
+    
     document.getElementById('processModalTitle').textContent = title;
     document.getElementById('processModalText').textContent = text;
     document.getElementById('processModalStatus').innerHTML = status || '';
@@ -373,64 +411,33 @@ function showProcessModal(title, text, status) {
     });
 }
 
-
-// Обновить статус в модальном окне
-function updateProcessModal(title, text, finished) {
-    if (title) {
-        document.getElementById('processModalTitle').textContent = title;
+// Закрыть модальное окно без перезагрузки
+function hideProcessModal() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
     }
-    if (text) {
-        document.getElementById('processModalText').innerHTML = text;
-    }
-    if (finished) {
-        document.getElementById('processModalClose').style.display = 'inline-block';
-        document.getElementById('processModalClose').disabled = false;
-        document.getElementById('processModalClose').innerHTML = '<span class="glyphicon glyphicon-ok"></span> Закрыть';
-        document.getElementById('processModalClose').onclick = function() {
-            try {
-                // Пробуем через Bootstrap jQuery
-                if (typeof $ !== 'undefined') {
-                    $('#processModal').modal('hide');
-                }
-                // Если не сработало - просто закрываем через DOM
-                var modal = document.getElementById('processModal');
-                if (modal) {
-                    modal.classList.remove('in');
-                    modal.style.display = 'none';
-                    document.body.classList.remove('modal-open');
-                    var backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) backdrop.remove();
-                }
-                location.reload();
-            } catch(e) {
-                location.reload();
+    try {
+        if (typeof $ !== 'undefined') {
+            $('#processModal').modal('hide');
+        } else {
+            var modal = document.getElementById('processModal');
+            if (modal) {
+                modal.classList.remove('in');
+                modal.style.display = 'none';
+                document.body.classList.remove('modal-open');
+                var backdrop = document.querySelector('.modal-backdrop');
+                if (backdrop) backdrop.remove();
             }
-        };
-        
-        // АВТОМАТИЧЕСКОЕ ЗАКРЫТИЕ ЧЕРЕЗ 2 СЕКУНДЫ
-        setTimeout(function() {
-            try {
-                if (typeof $ !== 'undefined') {
-                    $('#processModal').modal('hide');
-                } else {
-                    var modal = document.getElementById('processModal');
-                    if (modal) {
-                        modal.classList.remove('in');
-                        modal.style.display = 'none';
-                        document.body.classList.remove('modal-open');
-                        var backdrop = document.querySelector('.modal-backdrop');
-                        if (backdrop) backdrop.remove();
-                    }
-                }
-                location.reload();
-            } catch(e) {
-                location.reload();
-            }
-        }, 2000);
-    }
+        }
+    } catch(e) {}
 }
 
-// Функция для запуска бэкапа со спиннером
+// ============================================
+// БЭКАП
+// ============================================
+
+// Функция для запуска бэкапа со спиннером и таймером
 function startBackup() {
     var backupDir = document.getElementById('backup_dir').value;
     if (!backupDir) {
@@ -454,22 +461,8 @@ function startBackup() {
     .then(response => response.text())
     .then(text => {
         // Закрываем модальное окно
-        try {
-            if (typeof $ !== 'undefined') {
-                $('#processModal').modal('hide');
-            } else {
-                var modal = document.getElementById('processModal');
-                if (modal) {
-                    modal.classList.remove('in');
-                    modal.style.display = 'none';
-                    document.body.classList.remove('modal-open');
-                    var backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) backdrop.remove();
-                }
-            }
-        } catch(e) {}
+        hideProcessModal();
         
-        // Проверяем результат и перезагружаем страницу
         if (text.indexOf('✅ Резервная копия успешно создана') !== -1) {
             location.reload();
         } else if (text.indexOf('❌ Ошибка') !== -1) {
@@ -481,17 +474,17 @@ function startBackup() {
         }
     })
     .catch(err => {
-        try {
-            if (typeof $ !== 'undefined') {
-                $('#processModal').modal('hide');
-            }
-        } catch(e) {}
+        hideProcessModal();
         alert('❌ Ошибка соединения: ' + err.message);
         location.reload();
     });
 }
 
-// Функция для запуска восстановления со спиннером
+// ============================================
+// ВОССТАНОВЛЕНИЕ
+// ============================================
+
+// Функция для запуска восстановления со спиннером и таймером
 function startRestore() {
     var backupFile = document.querySelector('select[name="backup_file"]');
     if (!backupFile || !backupFile.value) {
@@ -517,22 +510,8 @@ function startRestore() {
     .then(response => response.text())
     .then(text => {
         // Закрываем модальное окно
-        try {
-            if (typeof $ !== 'undefined') {
-                $('#processModal').modal('hide');
-            } else {
-                var modal = document.getElementById('processModal');
-                if (modal) {
-                    modal.classList.remove('in');
-                    modal.style.display = 'none';
-                    document.body.classList.remove('modal-open');
-                    var backdrop = document.querySelector('.modal-backdrop');
-                    if (backdrop) backdrop.remove();
-                }
-            }
-        } catch(e) {}
+        hideProcessModal();
         
-        // Проверяем результат и перезагружаем страницу
         if (text.indexOf('✅ База данных успешно восстановлена') !== -1) {
             location.reload();
         } else if (text.indexOf('❌ Ошибка') !== -1) {
@@ -544,13 +523,262 @@ function startRestore() {
         }
     })
     .catch(err => {
-        try {
-            if (typeof $ !== 'undefined') {
-                $('#processModal').modal('hide');
-            }
-        } catch(e) {}
+        hideProcessModal();
         alert('❌ Ошибка соединения: ' + err.message);
         location.reload();
     });
+}
+
+// ============================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================
+
+// Confirm backup
+function confirmBackup() {
+    var backupDir = document.getElementById('backup_dir').value;
+    if (!backupDir) {
+        alert('Пожалуйста, укажите папку для сохранения резервной копии.');
+        return false;
+    }
+    return confirm('Внимание! Создание резервной копии может занять несколько минут.\n\nПродолжить?');
+}
+
+// Confirm restore
+function confirmRestore() {
+    return confirm('ВНИМАНИЕ! Будет выполнено восстановление базы данных в новый файл в папку, указанную в настройках.\n\n' +
+                   'Процесс может занимать длительное время\n\n' +
+                   'Вы уверены, что хотите продолжить?');
+}
+
+// Confirm service action
+function confirmService(action) {
+    var actionText = (action === 'start') ? 'запустить' : 'остановить';
+    return confirm('Вы уверены, что хотите ' + actionText + ' сервис Firebird?\n\n' +
+                   'Это может повлиять на работу приложения.');
+}
+
+// Функция для выбора папки с базами данных
+function browseDatabaseFolder() {
+    var folderInput = document.createElement('input');
+    folderInput.type = 'file';
+    folderInput.webkitdirectory = true;
+    folderInput.directory = true;
+    folderInput.style.display = 'none';
+    
+    folderInput.addEventListener('change', function(e) {
+        if (this.files && this.files.length > 0) {
+            var filePath = this.files[0].webkitRelativePath;
+            var folderPath = '';
+            
+            if (this.files[0].path) {
+                folderPath = this.files[0].path;
+                var lastSeparator = folderPath.lastIndexOf('\\');
+                if (lastSeparator > 0) {
+                    folderPath = folderPath.substring(0, lastSeparator);
+                }
+            } else if (this.value) {
+                folderPath = this.value;
+                var lastSeparator = Math.max(folderPath.lastIndexOf('\\'), folderPath.lastIndexOf('/'));
+                if (lastSeparator > 0) {
+                    folderPath = folderPath.substring(0, lastSeparator);
+                }
+            }
+            
+            if (folderPath) {
+                document.getElementById('database_dir').value = folderPath;
+                saveBrowsePath(folderPath);
+                alert('Выбрана папка: ' + folderPath + '\n\nТеперь укажите имя файла базы данных в поле выше.');
+            } else {
+                alert('Не удалось определить путь к папке. Пожалуйста, укажите путь вручную.');
+            }
+        }
+    });
+    
+    document.body.appendChild(folderInput);
+    folderInput.click();
+    document.body.removeChild(folderInput);
+}
+
+// Функция для сохранения пути обзора
+function saveBrowsePath(path) {
+    var formData = new FormData();
+    formData.append('browse_path', path);
+    formData.append('csrf_token', csrf_token);
+    
+    fetch('<?php echo URL::site("dbsetting/save_browse_path"); ?>', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    }).catch(error => console.log('Failed to save browse path:', error));
+}
+
+// Функция для сохранения папки резервных копий
+function saveBackupDir() {
+    var backupDir = document.getElementById('backup_dir').value;
+    if (!backupDir) {
+        alert('Пожалуйста, укажите папку для сохранения резервных копий.');
+        return;
+    }
+    
+    var saveBtn = event.target;
+    var originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="glyphicon glyphicon-refresh spinning"></span>';
+    saveBtn.disabled = true;
+    
+    var formData = new FormData();
+    formData.append('backup_dir', backupDir);
+    formData.append('csrf_token', csrf_token);
+    
+    fetch('<?php echo URL::site("dbsetting/save_backup_dir"); ?>', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        
+        if (data.success) {
+            alert('Папка для резервных копий сохранена: ' + backupDir);
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        alert('Ошибка: ' + error.message);
+    });
+}
+
+// Функция для сохранения папки с базой данных
+function saveDatabaseDir() {
+    var databaseDir = document.getElementById('database_dir').value;
+    if (!databaseDir) {
+        alert('Пожалуйста, укажите папку с базой данных.');
+        return;
+    }
+    
+    var saveBtn = event.target;
+    var originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="glyphicon glyphicon-refresh spinning"></span>';
+    saveBtn.disabled = true;
+    
+    var formData = new FormData();
+    formData.append('database_dir', databaseDir);
+    formData.append('csrf_token', csrf_token);
+    
+    fetch('<?php echo URL::site("dbsetting/save_database_dir"); ?>', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        
+        if (data.success) {
+            alert('Папка с базой данных сохранена: ' + databaseDir);
+            document.getElementById('backup_database_path').value = data.new_full_path || databaseDir;
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        alert('Ошибка: ' + error.message);
+    });
+}
+
+// Функция для сохранения имени файла базы данных
+function saveDatabaseFilename() {
+    var filename = document.getElementById('database_filename').value;
+    if (!filename) {
+        alert('Пожалуйста, укажите имя файла базы данных.');
+        return;
+    }
+    
+    var saveBtn = event.target;
+    var originalText = saveBtn.innerHTML;
+    saveBtn.innerHTML = '<span class="glyphicon glyphicon-refresh spinning"></span>';
+    saveBtn.disabled = true;
+    
+    var formData = new FormData();
+    formData.append('database_filename', filename);
+    formData.append('csrf_token', csrf_token);
+    
+    fetch('<?php echo URL::site("dbsetting/save_database_filename"); ?>', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        
+        if (data.success) {
+            alert('Имя файла сохранено: ' + filename);
+            document.getElementById('backup_database_path').value = data.new_full_path || filename;
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        saveBtn.innerHTML = originalText;
+        saveBtn.disabled = false;
+        alert('Ошибка: ' + error.message);
+    });
+}
+
+// Открыть папку с базой данных в проводнике
+function openDatabaseFolder() {
+    var dir = document.getElementById('database_dir').value.trim();
+    if (!dir) {
+        alert('Сначала сохраните путь к папке с базой данных!');
+        return;
+    }
+    
+    var link = document.createElement('a');
+    link.href = 'file:///' + dir.replace(/\\/g, '/');
+    link.click();
+    
+    var iframe = document.getElementById('explorerIframe');
+    if (iframe) {
+        iframe.src = 'file:///' + dir.replace(/\\/g, '/');
+    }
+    
+    alert('Проводник должен открыться.\nЕсли не открылся, скопируйте путь:\n' + dir);
+}
+
+// Открыть папку с бэкапами в проводнике
+function openBackupFolder() {
+    var dir = document.getElementById('backup_dir').value.trim();
+    if (!dir) {
+        alert('Сначала сохраните путь к папке резервного копирования!');
+        return;
+    }
+    
+    var link = document.createElement('a');
+    link.href = 'file:///' + dir.replace(/\\/g, '/');
+    link.click();
+    
+    var iframe = document.getElementById('explorerIframe');
+    if (iframe) {
+        iframe.src = 'file:///' + dir.replace(/\\/g, '/');
+    }
+    
+    alert('Проводник должен открыться.\nЕсли не открылся, скопируйте путь:\n' + dir);
 }
 </script>

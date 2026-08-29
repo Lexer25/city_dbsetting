@@ -648,6 +648,7 @@ class Controller_Dbsetting extends Controller_Template {
     public function action_backup()
     {
         set_time_limit(0);
+		Session::instance()->set('operation_start_time', time());
 		if ($this->request->method() !== 'POST') {
             $this->redirect('dbsetting');
             return;
@@ -785,6 +786,7 @@ if ($return_var === 0) {
     Session::instance()->set('flash_message_dbsetting', array(
         'type' => 'success',
         'text' => '✅ Резервная копия успешно создана!<br><br>' .
+				  '⏱️ Время выполнения: ' . $this->get_execution_time() . '<br>' .
                   '📁 Файл: ' . $backup_file . '<br>' .
                   '📊 Размер: ' . $backup_size . ' MB<br>' .
                   '📄 Лог: ' . $log_file
@@ -894,6 +896,7 @@ if ($return_var === 0) {
   public function action_restore()
 {
     set_time_limit(0);
+	Session::instance()->set('operation_start_time', time());
 	if ($this->request->method() !== 'POST') {
         $this->redirect('dbsetting');
         return;
@@ -1024,10 +1027,11 @@ if ($return_var === 0) {
     echo "Файл: " . htmlspecialchars($restored_basename) . "\n";
     
     // Сохраняем flash_message с полными путями
-    Session::instance()->set('flash_message_dbsetting', array(
+     Session::instance()->set('flash_message_dbsetting', array(
         'type' => 'success',
         'text' => 
             '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!<br><br>' .
+			'⏱️ Время выполнения: ' . $this->get_execution_time() . '<br><br>' .
             '📁 Восстановленный файл: ' . $new_restore_path . '<br>' .
             '📄 Лог восстановления: ' . $log_file . '<br><br>' .
             '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>' .
@@ -1616,4 +1620,23 @@ if ($return_var === 0) {
         
         $this->redirect('dbsetting');
     }
+	
+	/**
+ * Получить время выполнения операции в формате ЧЧ:ММ:СС
+ * @return string
+ */
+protected function get_execution_time() {
+    // Время начала операции сохраняется в сессии
+    $start_time = Session::instance()->get('operation_start_time');
+    if (empty($start_time)) {
+        return '00:00:00';
+    }
+    
+    $duration = time() - $start_time;
+    $hours = floor($duration / 3600);
+    $minutes = floor(($duration % 3600) / 60);
+    $seconds = $duration % 60;
+    
+    return sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+}
 }

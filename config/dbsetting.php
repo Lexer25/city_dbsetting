@@ -2,23 +2,23 @@
 
 return array(
     
-    // ÐŸÑƒÑ‚ÑŒ Ðº Firebird Ð´Ð¸Ñ€ÐµÐºÑ‚Ð¾Ñ€Ð¸ÑŽ (gbak, isql, etc.)
-    // Ð”Ð»Ñ Firebird 1.5.6 Ð¾Ð±Ñ‹Ñ‡Ð½Ð¾ Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÑ‚ÑÑ Ð¸Ð¼ÐµÐ½Ð½Ð¾ ÑÑ‚Ð¾Ñ‚ Ð¿ÑƒÑ‚ÑŒ
+    // Ïóòü ê Firebird äèðåêòîðèþ (gbak, isql, etc.)
+    // Äëÿ Firebird 1.5.6 îáû÷íî èñïîëüçóåòñÿ èìåííî ýòîò ïóòü
     'firebird_bin' => 'C:\\Program Files (x86)\\Firebird\\Firebird_1_5_6\\bin',
     
-    // ÐŸÐ°Ñ€Ð¾Ð»ÑŒ Ð´Ð»Ñ SYSDBA user
-    'firebird_password' => 'temp',  // Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚Ðµ Ð²Ð°Ñˆ Ñ€ÐµÐ°Ð»ÑŒÐ½Ñ‹Ð¹ Ð¿Ð°Ñ€Ð¾Ð»ÑŒ!
+    // Ïàðîëü äëÿ SYSDBA user
+    'firebird_password' => 'temp',  // Óñòàíîâèòå âàø ðåàëüíûé ïàðîëü!
     
-    // Ð¿ÑƒÑ‚ÑŒ Ðº Ð±Ð°Ð·Ðµ Ð´Ð°Ð½Ð½Ñ‹Ñ…, Ð´Ð»Ñ ÐºÐ¾Ñ‚Ð¾Ñ€Ð¾Ð¹ Ð½Ð°Ð´Ð¾ ÑÐ´ÐµÐ»Ð°Ñ‚ÑŒ Ñ€ÐµÐ·ÐµÑ€Ð²Ð½ÑƒÑŽ ÐºÐ¾Ð¿Ð¸ÑŽ. (used for backup/restore)
+    // ïóòü ê áàçå äàííûõ, äëÿ êîòîðîé íàäî ñäåëàòü ðåçåðâíóþ êîïèþ. (used for backup/restore)
     'database_path' => 'C:\Program Files (x86)\Cardsoft\DuoSE\Access\ShieldPro_rest.gdb',
 	
-	// ÐšÑƒÐ´Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½ÑÑ‚ÑŒ Ñ€ÐµÐ·ÐµÑ€Ð²Ð½ÑƒÑŽ ÐºÐ¾Ð¿Ð¸ÑŽ
+	// Êóäà ñîõðàíÿòü ðåçåðâíóþ êîïèþ
     'backup_dir' => 'C:\\Test',
     
-    // ÐšÑƒÐ´Ð° ÑÐ¾Ñ…Ñ€Ð°Ð½ÑÑ‚ÑŒ Ð²Ð¾ÑÑÑ‚Ð°Ð½Ð¾Ð²Ð»ÐµÐ½Ð½ÑƒÑŽ Ð±Ð°Ð·Ñƒ Ð´Ð°Ð½Ð½Ñ‹Ñ…. (where restored database files will be placed)
+    // Êóäà ñîõðàíÿòü âîññòàíîâëåííóþ áàçó äàííûõ. (where restored database files will be placed)
     'restore_path' => 'C:\\Test',
     
-    // Firebird service name (Ð´Ð»Ñ Firebird 1.5.6)
+    // Firebird service name (äëÿ Firebird 1.5.6)
     'service_name' => 'FirebirdGuardianDefaultInstance',
     
     // Path to database.php config file
