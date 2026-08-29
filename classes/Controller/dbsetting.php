@@ -647,7 +647,8 @@ class Controller_Dbsetting extends Controller_Template {
      */
     public function action_backup()
     {
-        if ($this->request->method() !== 'POST') {
+        set_time_limit(0);
+		if ($this->request->method() !== 'POST') {
             $this->redirect('dbsetting');
             return;
         }
@@ -730,6 +731,9 @@ class Controller_Dbsetting extends Controller_Template {
         Log::instance()->add(Log::INFO, 'Backup log file: ' . $log_file);
 
         if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
+			    // Уже есть set_time_limit(0) в начале метода, но можно добавить еще раз
+			set_time_limit(0);
+			
             header('Content-Type: text/plain; charset=utf-8');
             header('X-Accel-Buffering: no');
             ob_end_clean();
@@ -872,7 +876,8 @@ class Controller_Dbsetting extends Controller_Template {
      */
   public function action_restore()
 {
-    if ($this->request->method() !== 'POST') {
+    set_time_limit(0);
+	if ($this->request->method() !== 'POST') {
         $this->redirect('dbsetting');
         return;
     }
@@ -948,6 +953,9 @@ class Controller_Dbsetting extends Controller_Template {
     // AJAX - живой вывод
     // ============================================================
     if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
+		   // Уже есть set_time_limit(0) в начале метода, но можно добавить еще раз
+		set_time_limit(0);
+	
         header('Content-Type: text/plain; charset=utf-8');
         header('X-Accel-Buffering: no');
         ob_end_clean();
