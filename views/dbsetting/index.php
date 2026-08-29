@@ -469,18 +469,15 @@ function startBackup() {
             }
         } catch(e) {}
         
+        // Проверяем результат и перезагружаем страницу
         if (text.indexOf('✅ Резервная копия успешно создана') !== -1) {
-            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
-            var sizeMatch = text.match(/Размер:\s*([^\s]+)/);
-            var msg = '✅ Резервная копия успешно создана!\n\n';
-            if (fileMatch) msg += 'Файл: ' + fileMatch[1] + '\n';
-            if (sizeMatch) msg += 'Размер: ' + sizeMatch[1] + '\n';
-            alert(msg);
             location.reload();
         } else if (text.indexOf('❌ Ошибка') !== -1) {
             alert('❌ Ошибка создания резервной копии!\n\n' + text.replace(/\n/g, '\n'));
+            location.reload();
         } else {
             alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
+            location.reload();
         }
     })
     .catch(err => {
@@ -490,6 +487,7 @@ function startBackup() {
             }
         } catch(e) {}
         alert('❌ Ошибка соединения: ' + err.message);
+        location.reload();
     });
 }
 
@@ -534,25 +532,15 @@ function startRestore() {
             }
         } catch(e) {}
         
+        // Проверяем результат и перезагружаем страницу
         if (text.indexOf('✅ База данных успешно восстановлена') !== -1) {
-            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
-            var targetDir = '<?php echo dirname($database_path); ?>';
-            var targetFile = '<?php echo basename($database_path); ?>';
-            
-            var msg = '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!\n\n';
-            if (fileMatch) msg += '📁 Восстановленный файл: ' + fileMatch[1] + '\n\n';
-            msg += '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:\n';
-            msg += '1. Остановить Firebird сервис\n';
-            msg += '2. Скопировать ' + (fileMatch ? fileMatch[1] : 'файл') + ' в папку\n';
-            msg += '   ' + targetDir + '\n';
-            msg += '3. Переименовать в ' + targetFile + '\n';
-            msg += '4. Запустить Firebird сервис';
-            alert(msg);
             location.reload();
         } else if (text.indexOf('❌ Ошибка') !== -1) {
             alert('❌ Ошибка восстановления!\n\n' + text.replace(/\n/g, '\n'));
+            location.reload();
         } else {
             alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
+            location.reload();
         }
     })
     .catch(err => {
@@ -562,6 +550,7 @@ function startRestore() {
             }
         } catch(e) {}
         alert('❌ Ошибка соединения: ' + err.message);
+        location.reload();
     });
 }
 </script>

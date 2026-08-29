@@ -775,17 +775,34 @@ class Controller_Dbsetting extends Controller_Template {
             echo "Код возврата: " . $return_var . "\n";
             echo "Лог сохранен: " . htmlspecialchars(basename($log_file)) . "\n";
             
-            if ($return_var === 0) {
-                $backup_size = round(filesize($backup_file) / 1024 / 1024, 2);
-                echo "✅ Резервная копия успешно создана!\n";
-                echo "Размер: " . $backup_size . " MB\n";
-                echo "Файл: " . htmlspecialchars(basename($backup_file)) . "\n";
-            } else {
-                echo "❌ Ошибка! Код: $return_var\n";
-                echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
-                Log::instance()->add(Log::ERROR, 'Backup failed with code ' . $return_var . '. Log saved to: ' . $log_file);
-            }
-            exit;
+if ($return_var === 0) {
+    $backup_size = round(filesize($backup_file) / 1024 / 1024, 2);
+    echo "✅ Резервная копия успешно создана!\n";
+    echo "Размер: " . $backup_size . " MB\n";
+    echo "Файл: " . htmlspecialchars(basename($backup_file)) . "\n";
+    
+    // Сохраняем flash_message с полным путем
+    Session::instance()->set('flash_message_dbsetting', array(
+        'type' => 'success',
+        'text' => '✅ Резервная копия успешно создана!<br><br>' .
+                  '📁 Файл: ' . $backup_file . '<br>' .
+                  '📊 Размер: ' . $backup_size . ' MB<br>' .
+                  '📄 Лог: ' . $log_file
+    ));
+} else {
+    echo "❌ Ошибка! Код: $return_var\n";
+    echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
+    Log::instance()->add(Log::ERROR, 'Backup failed with code ' . $return_var . '. Log saved to: ' . $log_file);
+    
+    Session::instance()->set('flash_message_dbsetting', array(
+        'type' => 'error',
+        'text' => '❌ Ошибка создания резервной копии!<br><br>' .
+                  'Код: ' . $return_var . '<br>' .
+                  '📄 Лог: ' . $log_file
+    ));
+}
+
+			exit;
         }
 
         // Fallback (if not AJAX)
@@ -997,15 +1014,53 @@ class Controller_Dbsetting extends Controller_Template {
         echo "Код возврата: " . $return_var . "\n";
         echo "Лог сохранен: " . htmlspecialchars(basename($log_file)) . "\n";
         
-        if ($return_var === 0) {
-            echo "✅ База данных успешно восстановлена!\n";
-            echo "Файл: " . htmlspecialchars(basename($new_restore_path)) . "\n";
-        } else {
-            echo "❌ Ошибка! Код: $return_var\n";
-            echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
-            Log::instance()->add(Log::ERROR, 'Restore failed with code ' . $return_var . '. Log saved to: ' . $log_file);
-        }
-        exit;
+       if ($return_var === 0) {
+    $restored_basename = basename($new_restore_path);
+    $log_basename = basename($log_file);
+    $target_dir = dirname($database_path);
+    $target_file = basename($database_path);
+    
+    echo "✅ База данных успешно восстановлена!\n";
+    echo "Файл: " . htmlspecialchars($restored_basename) . "\n";
+    
+    // Сохраняем flash_message с полными путями
+    Session::instance()->set('flash_message_dbsetting', array(
+        'type' => 'success',
+        'text' => 
+            '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!<br><br>' .
+            '📁 Восстановленный файл: ' . $new_restore_path . '<br>' .
+            '📄 Лог восстановления: ' . $log_file . '<br><br>' .
+            '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>' .
+            '1. Остановить Firebird сервис<br>' .
+            '2. Скопировать <b>' . $restored_basename . '</b> в папку<br>' .
+            '&nbsp;&nbsp;<code>' . $target_dir . '</code><br>' .
+            '3. Переименовать в <b>' . $target_file . '</b><br>' .
+            '4. Запустить Firebird сервис'
+    ));
+} else {
+    echo "❌ Ошибка! Код: $return_var\n";
+    echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
+    Log::instance()->add(Log::ERROR, 'Restore failed with code ' . $return_var . '. Log saved to: ' . $log_file);
+    
+    // Извлекаем ошибку из вывода
+    $error_lines = array_filter($output, function($line) {
+        return stripos($line, 'error') !== false || 
+               stripos($line, 'fail') !== false || 
+               stripos($line, 'unable') !== false ||
+               stripos($line, 'cannot') !== false;
+    });
+    $error_msg = !empty($error_lines) ? implode('; ', $error_lines) : 'Unknown error';
+    
+    Session::instance()->set('flash_message_dbsetting', array(
+        'type' => 'error',
+        'text' => '❌ Ошибка восстановления!<br><br>' .
+                  'Код: ' . $return_var . '<br>' .
+                  'Ошибка: ' . htmlspecialchars($error_msg) . '<br>' .
+                  '📄 Лог: ' . $log_file
+    ));
+}
+
+		exit;
     }
 
     // Fallback
