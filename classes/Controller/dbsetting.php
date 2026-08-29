@@ -65,6 +65,52 @@ class Controller_Dbsetting extends Controller_Template {
     }
     
     /**
+     * Convert text from Windows-1251 to UTF-8
+     * @param string $text Text to convert
+     * @return string Converted text
+     */
+    protected function convert_to_utf8($text) {
+        if (empty($text)) {
+            return $text;
+        }
+        
+        // Проверяем, не в UTF-8 ли уже
+        if (function_exists('mb_detect_encoding') && mb_detect_encoding($text, 'UTF-8', true) === 'UTF-8') {
+            return $text;
+        }
+        
+        // Пробуем конвертировать
+        if (function_exists('iconv')) {
+            $result = iconv('CP1251', 'UTF-8//IGNORE', $text);
+            if ($result !== false) {
+                return $result;
+            }
+        }
+        
+        if (function_exists('mb_convert_encoding')) {
+            $result = mb_convert_encoding($text, 'UTF-8', 'CP1251');
+            if ($result !== false) {
+                return $result;
+            }
+        }
+        
+        // Если ничего не помогло - возвращаем как есть
+        return $text;
+    }
+    
+    /**
+     * Save log file with UTF-8 encoding
+     * @param string $file_path Path to log file
+     * @param string $content Log content
+     * @return bool|int
+     */
+    protected function save_log_file($file_path, $content) {
+        // Добавляем BOM для UTF-8
+        $bom = "\xEF\xBB\xBF";
+        return file_put_contents($file_path, $bom . $content, LOCK_EX);
+    }
+    
+    /**
      * Validate and sanitize file path for security
      * @param string $path Path to validate
      * @param bool $check_exists Check if file/directory exists
@@ -165,33 +211,33 @@ class Controller_Dbsetting extends Controller_Template {
      * @param int $required_mb Required space in MB
      * @return bool
      */
-		protected function check_disk_space($path, $required_mb = 50) {
-			// Проверяем, существует ли директория
-			if (!is_dir($path)) {
-				@mkdir($path, 0777, true);
-				if (!is_dir($path)) {
-					return true; // Не можем проверить - пропускаем
-				}
-			}
-    
-    // Получаем корень диска
-    $root_path = $path;
-    if (DIRECTORY_SEPARATOR === '\\') {
-        if (preg_match('/^[A-Za-z]:/', $path, $matches)) {
-            $root_path = $matches[0] . DIRECTORY_SEPARATOR;
-        } else {
-            return true; // UNC путь - пропускаем проверку
+    protected function check_disk_space($path, $required_mb = 50) {
+        // Проверяем, существует ли директория
+        if (!is_dir($path)) {
+            @mkdir($path, 0777, true);
+            if (!is_dir($path)) {
+                return true; // Не можем проверить - пропускаем
+            }
         }
-    }
     
-    $free_space = @disk_free_space($root_path);
-    if ($free_space === false) {
-        return true; // Не можем проверить - пропускаем
-    }
+        // Получаем корень диска
+        $root_path = $path;
+        if (DIRECTORY_SEPARATOR === '\\') {
+            if (preg_match('/^[A-Za-z]:/', $path, $matches)) {
+                $root_path = $matches[0] . DIRECTORY_SEPARATOR;
+            } else {
+                return true; // UNC путь - пропускаем проверку
+            }
+        }
     
-    $free_mb = $free_space / 1024 / 1024;
-    return $free_mb >= $required_mb;
-}
+        $free_space = @disk_free_space($root_path);
+        if ($free_space === false) {
+            return true; // Не можем проверить - пропускаем
+        }
+    
+        $free_mb = $free_space / 1024 / 1024;
+        return $free_mb >= $required_mb;
+    }
     
     /**
      * Check database file size
@@ -597,163 +643,166 @@ class Controller_Dbsetting extends Controller_Template {
     }
     
     /**
-     * Create database backup with live output
+     * Create database backup with live output and log file
      */
-/**
- * Create database backup with live output and log file
- */
-public function action_backup()
-{
-    if ($this->request->method() !== 'POST') {
-        $this->redirect('dbsetting');
-        return;
-    }
-
-    if (!$this->validate_csrf('backup')) {
-        $this->send_json_response(false, 'CSRF validation failed');
-        return;
-    }
-
-    $firebird_bin = $this->config->get('firebird_bin');
-    $firebird_password = $this->config->get('firebird_password', '');
-
-    if (empty($firebird_password)) {
-        $this->send_json_response(false, 'Firebird password not configured');
-        return;
-    }
-
-    $database_path = Arr::get($_POST, 'database_path');
-    $backup_dir = Arr::get($_POST, 'backup_dir');
-
-    try {
-        $database_path = $this->validate_path($database_path, true);
-        $backup_dir = $this->validate_path($backup_dir, false);
-    } catch (Exception $e) {
-        $this->send_json_response(false, 'Path validation failed: ' . $e->getMessage());
-        return;
-    }
-
-    // Check database size before backup
-    if (!file_exists($database_path)) {
-        $this->send_json_response(false, 'Database file does not exist: ' . $database_path);
-        return;
-    }
-    
-    if (!$this->check_database_size($database_path)) {
-        $this->send_json_response(false, 
-            'Database file is too large (>' . $this->max_backup_size_mb . ' MB). Backup not recommended.'
-        );
-        return;
-    }
-
-    // Check disk space
-    if (!$this->check_disk_space($backup_dir, 100)) {
-        $this->send_json_response(false, 
-            'Not enough disk space (minimum 100 MB required)'
-        );
-        return;
-    }
-
-    if (!is_dir($backup_dir)) {
-        if (!mkdir($backup_dir, 0777, true)) {
-            $this->send_json_response(false, 'Failed to create backup directory');
+    public function action_backup()
+    {
+        if ($this->request->method() !== 'POST') {
+            $this->redirect('dbsetting');
             return;
         }
-    }
 
-    // Rotate old backups (keep last 10)
-    $keep_count = $this->config->get('max_backup_files', 10);
-    $this->rotate_backups($backup_dir, $keep_count);
+        if (!$this->validate_csrf('backup')) {
+            $this->send_json_response(false, 'CSRF validation failed');
+            return;
+        }
 
-    $db_filename = pathinfo($database_path, PATHINFO_FILENAME);
-    $timestamp = date('Y-m-d_His');
-    $backup_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.fbk';
-    $log_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.log';
+        $firebird_bin = $this->config->get('firebird_bin');
+        $firebird_password = $this->config->get('firebird_password', '');
 
-    $gbak_path = rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe';
-    if (!file_exists($gbak_path)) {
-        $this->send_json_response(false, 'gbak.exe not found at: ' . $gbak_path);
-        return;
-    }
+        if (empty($firebird_password)) {
+            $this->send_json_response(false, 'Firebird password not configured');
+            return;
+        }
 
-    $gbak = escapeshellarg($gbak_path);
-    $db = '127.0.0.1:' . escapeshellarg($database_path);
-    $backup = escapeshellarg($backup_file);
+        $database_path = Arr::get($_POST, 'database_path');
+        $backup_dir = Arr::get($_POST, 'backup_dir');
 
-    $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' .
-            escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
+        try {
+            $database_path = $this->validate_path($database_path, true);
+            $backup_dir = $this->validate_path($backup_dir, false);
+        } catch (Exception $e) {
+            $this->send_json_response(false, 'Path validation failed: ' . $e->getMessage());
+            return;
+        }
 
-    Log::instance()->add(Log::INFO, 'Backup started: ' . $backup_file);
-    Log::instance()->add(Log::INFO, 'Backup log file: ' . $log_file);
+        // Check database size before backup
+        if (!file_exists($database_path)) {
+            $this->send_json_response(false, 'Database file does not exist: ' . $database_path);
+            return;
+        }
+        
+        if (!$this->check_database_size($database_path)) {
+            $this->send_json_response(false, 
+                'Database file is too large (>' . $this->max_backup_size_mb . ' MB). Backup not recommended.'
+            );
+            return;
+        }
 
-    if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
-        header('Content-Type: text/plain; charset=utf-8');
-        header('X-Accel-Buffering: no');
-        ob_end_clean();
-        flush();
+        // Check disk space
+        if (!$this->check_disk_space($backup_dir, 100)) {
+            $this->send_json_response(false, 
+                'Not enough disk space (minimum 100 MB required)'
+            );
+            return;
+        }
 
-        echo "=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===\n";
-        echo "База данных: " . htmlspecialchars($database_path) . "\n";
-        echo "Сохраняем в: " . htmlspecialchars($backup_file) . "\n";
-        echo "Лог будет сохранен: " . htmlspecialchars($log_file) . "\n";
-        echo "Размер БД: " . round(filesize($database_path) / 1024 / 1024, 2) . " MB\n\n";
-        flush();
+        if (!is_dir($backup_dir)) {
+            if (!mkdir($backup_dir, 0777, true)) {
+                $this->send_json_response(false, 'Failed to create backup directory');
+                return;
+            }
+        }
 
-        $output = array();
-        $return_var = null;
-        exec($command . ' 2>&1', $output, $return_var);
+        // Rotate old backups (keep last 10)
+        $keep_count = $this->config->get('max_backup_files', 10);
+        $this->rotate_backups($backup_dir, $keep_count);
 
-        // Сохраняем лог в файл
-        $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ ===\n";
+        $db_filename = pathinfo($database_path, PATHINFO_FILENAME);
+        $timestamp = date('Y-m-d_His');
+        $backup_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.fbk';
+        $log_file = $backup_dir . DIRECTORY_SEPARATOR . $db_filename . '_' . $timestamp . '.log';
+
+        $gbak_path = rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe';
+        if (!file_exists($gbak_path)) {
+            $this->send_json_response(false, 'gbak.exe not found at: ' . $gbak_path);
+            return;
+        }
+
+        $gbak = escapeshellarg($gbak_path);
+        $db = '127.0.0.1:' . escapeshellarg($database_path);
+        $backup = escapeshellarg($backup_file);
+
+        $command = $gbak . ' -b -v -ig -g -user SYSDBA -password ' .
+                escapeshellarg($firebird_password) . ' ' . $db . ' ' . $backup;
+
+        Log::instance()->add(Log::INFO, 'Backup started: ' . $backup_file);
+        Log::instance()->add(Log::INFO, 'Backup log file: ' . $log_file);
+
+        if ($this->request->is_ajax() || $this->request->post('ajax') == 1) {
+            header('Content-Type: text/plain; charset=utf-8');
+            header('X-Accel-Buffering: no');
+            ob_end_clean();
+            flush();
+
+            echo "=== ЗАПУСК РЕЗЕРВНОГО КОПИРОВАНИЯ ===\n";
+            echo "База данных: " . htmlspecialchars($database_path) . "\n";
+            echo "Сохраняем в: " . htmlspecialchars($backup_file) . "\n";
+            echo "Лог будет сохранен: " . htmlspecialchars($log_file) . "\n";
+            echo "Размер БД: " . round(filesize($database_path) / 1024 / 1024, 2) . " MB\n\n";
+            flush();
+
+            $output = array();
+            $return_var = null;
+            exec($command . ' 2>&1', $output, $return_var);
+
+            // Сохраняем лог в файл с конвертацией в UTF-8
+            $output_text = implode("\n", $output);
+            $output_text = $this->convert_to_utf8($output_text);
+
+            $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ ===\n";
+            $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
+            $log_content .= "База данных: " . $database_path . "\n";
+            $log_content .= "Резервная копия: " . $backup_file . "\n";
+            $log_content .= "Команда: " . $command . "\n";
+            $log_content .= "Код возврата: " . $return_var . "\n";
+            $log_content .= "=== ВЫВОД GBAK ===\n";
+            $log_content .= $output_text . "\n";
+            $log_content .= "=== ЗАВЕРШЕНО ===\n";
+            
+            $this->save_log_file($log_file, $log_content);
+
+            foreach ($output as $line) {
+                echo htmlspecialchars($line) . "\n";
+                flush();
+            }
+
+            echo "\n=== ЗАВЕРШЕНО ===\n";
+            echo "Код возврата: " . $return_var . "\n";
+            echo "Лог сохранен: " . htmlspecialchars(basename($log_file)) . "\n";
+            
+            if ($return_var === 0) {
+                $backup_size = round(filesize($backup_file) / 1024 / 1024, 2);
+                echo "✅ Резервная копия успешно создана!\n";
+                echo "Размер: " . $backup_size . " MB\n";
+                echo "Файл: " . htmlspecialchars(basename($backup_file)) . "\n";
+            } else {
+                echo "❌ Ошибка! Код: $return_var\n";
+                echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
+                Log::instance()->add(Log::ERROR, 'Backup failed with code ' . $return_var . '. Log saved to: ' . $log_file);
+            }
+            exit;
+        }
+
+        // Fallback (if not AJAX)
+        exec($command, $output, $return_var);
+        
+        // Сохраняем лог и для fallback с конвертацией
+        $output_text = implode("\n", $output);
+        $output_text = $this->convert_to_utf8($output_text);
+
+        $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ (FALLBACK) ===\n";
         $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
         $log_content .= "База данных: " . $database_path . "\n";
         $log_content .= "Резервная копия: " . $backup_file . "\n";
-        $log_content .= "Команда: " . $command . "\n";
         $log_content .= "Код возврата: " . $return_var . "\n";
-        $log_content .= "=== ВЫВОД GBAG ===\n";
-        $log_content .= implode("\n", $output) . "\n";
-        $log_content .= "=== ЗАВЕРШЕНО ===\n";
+        $log_content .= "=== ВЫВОД GBAK ===\n";
+        $log_content .= $output_text . "\n";
         
-        file_put_contents($log_file, $log_content, LOCK_EX);
-
-        foreach ($output as $line) {
-            echo htmlspecialchars($line) . "\n";
-            flush();
-        }
-
-        echo "\n=== ЗАВЕРШЕНО ===\n";
-        echo "Код возврата: " . $return_var . "\n";
-        echo "Лог сохранен: " . htmlspecialchars(basename($log_file)) . "\n";
+        $this->save_log_file($log_file, $log_content);
         
-        if ($return_var === 0) {
-            $backup_size = round(filesize($backup_file) / 1024 / 1024, 2);
-            echo "✅ Резервная копия успешно создана!\n";
-            echo "Размер: " . $backup_size . " MB\n";
-            echo "Файл: " . htmlspecialchars(basename($backup_file)) . "\n";
-        } else {
-            echo "❌ Ошибка! Код: $return_var\n";
-            echo "Проверьте лог файл для деталей: " . htmlspecialchars(basename($log_file)) . "\n";
-            Log::instance()->add(Log::ERROR, 'Backup failed with code ' . $return_var . '. Log saved to: ' . $log_file);
-        }
-        exit;
+        $this->redirect('dbsetting');
     }
-
-    // Fallback (if not AJAX)
-    exec($command, $output, $return_var);
-    
-    // Сохраняем лог и для fallback
-    $log_content = "=== РЕЗЕРВНОЕ КОПИРОВАНИЕ (FALLBACK) ===\n";
-    $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
-    $log_content .= "База данных: " . $database_path . "\n";
-    $log_content .= "Резервная копия: " . $backup_file . "\n";
-    $log_content .= "Код возврата: " . $return_var . "\n";
-    $log_content .= "=== ВЫВОД GBAG ===\n";
-    $log_content .= implode("\n", $output) . "\n";
-    
-    file_put_contents($log_file, $log_content, LOCK_EX);
-    
-    $this->redirect('dbsetting');
-}
     
     /**
      * Save backup directory
@@ -817,176 +866,172 @@ public function action_backup()
         }
     }
     
+    /**
+     * Restore database from backup
+     * Восстанавливает БД в restore_path, НЕ меняет database_path
+     */
+    public function action_restore()
+    {
+        if ($this->request->method() !== 'POST') {
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        // Validate CSRF
+        if (!$this->validate_csrf('restore')) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => __('Security token validation failed.')
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        $backup_file = $this->request->post('backup_file');
+        $firebird_bin = $this->config->get('firebird_bin');
+        $firebird_password = $this->config->get('firebird_password', '');
+        $restore_dir = $this->config->get('restore_path');
+        $database_path = $this->config->get('database_path');
+        
+        // Validate password
+        if (empty($firebird_password)) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => __('Firebird password not configured.')
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        try {
+            // Validate backup file with extension check
+            $backup_file = $this->validate_backup_file($backup_file);
+            $restore_dir = $this->validate_path($restore_dir, false);
+        } catch (Exception $e) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => __('Path validation failed: ') . $e->getMessage()
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        // Check backup file size
+        $backup_size_mb = filesize($backup_file) / 1024 / 1024;
+        if ($backup_size_mb > $this->max_backup_size_mb) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => __('Backup file is too large (') . round($backup_size_mb, 2) . __(' MB). Maximum: ') . $this->max_backup_size_mb . __(' MB')
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        // Check disk space for restore
+        if (!$this->check_disk_space($restore_dir, ($backup_size_mb * 2) + 100)) {
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => __('Not enough disk space for restore (need at least ') . round(($backup_size_mb * 2) + 100, 0) . __(' MB)')
+            ));
+            $this->redirect('dbsetting');
+            return;
+        }
+        
+        // Формируем имя для восстановленной БД
+        $backup_info = pathinfo($backup_file);
+        $timestamp = date('Y-m-d_His');
+        $new_filename = $backup_info['filename'] . '_restored_' . $timestamp . '.gdb';
+        $new_restore_path = rtrim($restore_dir, '\\/') . DIRECTORY_SEPARATOR . $new_filename;
+        
+        // Создаем лог файл рядом с резервной копией
+        $log_file = dirname($backup_file) . DIRECTORY_SEPARATOR . 
+                    $backup_info['filename'] . '_restore_' . $timestamp . '.log';
+        
+        $gbak = escapeshellarg(rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe');
+        $backup = escapeshellarg($backup_file);
+        $restore = '127.0.0.1:' . escapeshellarg($new_restore_path);
+        
+        $command = $gbak . ' -c -o -v -r -user SYSDBA -password ' . 
+                   escapeshellarg($firebird_password) . ' ' . $backup . ' ' . $restore;
+        
+        // Выполняем команду и получаем полный вывод
+        exec($command . ' 2>&1', $output, $return_var);
 
-/**
- * Restore database from backup with log file
- */
-/**
- * Restore database from backup
- * Восстанавливает БД в restore_path, НЕ меняет database_path
- */
-public function action_restore()
-{
-    if ($this->request->method() !== 'POST') {
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    // Validate CSRF
-    if (!$this->validate_csrf('restore')) {
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => __('Security token validation failed.')
-        ));
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    $backup_file = $this->request->post('backup_file');
-    $firebird_bin = $this->config->get('firebird_bin');
-    $firebird_password = $this->config->get('firebird_password', '');
-    $restore_dir = $this->config->get('restore_path');
-    $database_path = $this->config->get('database_path');
-    
-    // Validate password
-    if (empty($firebird_password)) {
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => __('Firebird password not configured.')
-        ));
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    try {
-        // Validate backup file with extension check
-        $backup_file = $this->validate_backup_file($backup_file);
-        $restore_dir = $this->validate_path($restore_dir, false);
-    } catch (Exception $e) {
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => __('Path validation failed: ') . $e->getMessage()
-        ));
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    // Check backup file size
-    $backup_size_mb = filesize($backup_file) / 1024 / 1024;
-    if ($backup_size_mb > $this->max_backup_size_mb) {
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => __('Backup file is too large (') . round($backup_size_mb, 2) . __(' MB). Maximum: ') . $this->max_backup_size_mb . __(' MB')
-        ));
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    // Check disk space for restore
-    if (!$this->check_disk_space($restore_dir, ($backup_size_mb * 2) + 100)) {
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => __('Not enough disk space for restore (need at least ') . round(($backup_size_mb * 2) + 100, 0) . __(' MB)')
-        ));
-        $this->redirect('dbsetting');
-        return;
-    }
-    
-    // Формируем имя для восстановленной БД
-    $backup_info = pathinfo($backup_file);
-    $timestamp = date('Y-m-d_His');
-    $new_filename = $backup_info['filename'] . '_restored_' . $timestamp . '.gdb';
-    $new_restore_path = rtrim($restore_dir, '\\/') . DIRECTORY_SEPARATOR . $new_filename;
-    
-    // Создаем лог файл рядом с резервной копией
-    $log_file = dirname($backup_file) . DIRECTORY_SEPARATOR . 
-                $backup_info['filename'] . '_restore_' . $timestamp . '.log';
-    
-    $gbak = escapeshellarg(rtrim($firebird_bin, '\\/') . DIRECTORY_SEPARATOR . 'gbak.exe');
-    $backup = escapeshellarg($backup_file);
-    $restore = '127.0.0.1:' . escapeshellarg($new_restore_path);
-    
-    $command = $gbak . ' -c -o -v -r -user SYSDBA -password ' . 
-               escapeshellarg($firebird_password) . ' ' . $backup . ' ' . $restore;
-    
-    // Выполняем команду и получаем полный вывод
-    exec($command . ' 2>&1', $output, $return_var);
-    
-    // Полный вывод gbak для лога
-    $full_output = implode("\n", $output);
-    
-    // Сохраняем лог восстановления
-    $log_content = "=== ВОССТАНОВЛЕНИЕ БАЗЫ ДАННЫХ ===\n";
-    $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
-    $log_content .= "Файл бэкапа: " . $backup_file . "\n";
-    $log_content .= "Восстановлен в: " . $new_restore_path . "\n";
-    $log_content .= "Команда: " . $command . "\n";
-    $log_content .= "Код возврата: " . $return_var . "\n";
-    $log_content .= "=== ВЫВОД GBAK ===\n";
-    $log_content .= $full_output . "\n";
-    $log_content .= "=== ЗАВЕРШЕНО ===\n";
-    
-    file_put_contents($log_file, $log_content, LOCK_EX);
-    
-    // Логируем в системный лог
-    Log::instance()->add(Log::INFO, 'Restore completed. Return code: ' . $return_var);
-    Log::instance()->add(Log::INFO, 'Restore log saved to: ' . $log_file);
-    
-    if ($return_var === 0) {
-        // ============================================================
-        // ВАЖНО: НЕ МЕНЯЕМ database_path В КОНФИГЕ!
-        // Пользователь САМ заменит файл в Program Files вручную
-        // ============================================================
+        // Полный вывод gbak для лога с конвертацией в UTF-8
+        $full_output = implode("\n", $output);
+        $full_output = $this->convert_to_utf8($full_output);
+
+        // Сохраняем лог восстановления с BOM
+        $log_content = "=== ВОССТАНОВЛЕНИЕ БАЗЫ ДАННЫХ ===\n";
+        $log_content .= "Дата: " . date('Y-m-d H:i:s') . "\n";
+        $log_content .= "Файл бэкапа: " . $backup_file . "\n";
+        $log_content .= "Восстановлен в: " . $new_restore_path . "\n";
+        $log_content .= "Команда: " . $command . "\n";
+        $log_content .= "Код возврата: " . $return_var . "\n";
+        $log_content .= "=== ВЫВОД GBAK ===\n";
+        $log_content .= $full_output . "\n";
+        $log_content .= "=== ЗАВЕРШЕНО ===\n";
+
+        $this->save_log_file($log_file, $log_content);
         
-        $backup_basename = basename($backup_file);
-        $restored_basename = basename($new_restore_path);
-        $log_basename = basename($log_file);
-        $target_dir = dirname($database_path);
-        $target_file = basename($database_path);
+        // Логируем в системный лог
+        Log::instance()->add(Log::INFO, 'Restore completed. Return code: ' . $return_var);
+        Log::instance()->add(Log::INFO, 'Restore log saved to: ' . $log_file);
         
-		Session::instance()->set('flash_message_dbsetting', array(
-			'type' => 'success',
-			    'text' => 
-        '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!<br><br>' .
-        '📁 Восстановленный файл: ' . $new_restore_path . '<br>' .
-        '📄 Лог: ' . $log_basename . '<br><br>' .
-        '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>' .
-        '1. Остановить Firebird сервис<br>' .
-        '2. Скопировать ' . $restored_basename . ' в папку<br>' .
-        '&nbsp;&nbsp;' . $target_dir . '<br>' .
-        '3. Переименовать в ' . $target_file . '<br>' .
-        '4. Запустить Firebird сервис<br><br>'
-		));
-		
+        if ($return_var === 0) {
+            // ============================================================
+            // ВАЖНО: НЕ МЕНЯЕМ database_path В КОНФИГЕ!
+            // Пользователь САМ заменит файл в Program Files вручную
+            // ============================================================
+            
+            $backup_basename = basename($backup_file);
+            $restored_basename = basename($new_restore_path);
+            $log_basename = basename($log_file);
+            $target_dir = dirname($database_path);
+            $target_file = basename($database_path);
+            
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'success',
+                'text' => 
+                    '✅ БАЗА ДАННЫХ ВОССТАНОВЛЕНА!<br><br>' .
+                    '📁 Восстановленный файл: ' . $new_restore_path . '<br>' .
+                    '📄 Лог: ' . $log_basename . '<br><br>' .
+                    '⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>' .
+                    '1. Остановить Firebird сервис<br>' .
+                    '2. Скопировать ' . $restored_basename . ' в папку<br>' .
+                    '&nbsp;&nbsp;' . $target_dir . '<br>' .
+                    '3. Переименовать в ' . $target_file . '<br>' .
+                    '4. Запустить Firebird сервис<br><br>'
+            ));
+            
+            // Сохраняем путь к восстановленной БД в сессию для возможности автоматической замены
+            Session::instance()->set('restored_db_file', $new_restore_path);
+            Session::instance()->set('restored_db_log', $log_file);
+            
+        } else {
+            // Извлекаем ошибку из вывода
+            $error_lines = array_filter($output, function($line) {
+                return stripos($line, 'error') !== false || 
+                       stripos($line, 'fail') !== false || 
+                       stripos($line, 'unable') !== false ||
+                       stripos($line, 'cannot') !== false;
+            });
+            
+            $error_msg = !empty($error_lines) ? implode('; ', $error_lines) : 'Unknown error (check log file for details)';
+            
+            Session::instance()->set('flash_message_dbsetting', array(
+                'type' => 'error',
+                'text' => '❌ Ошибка восстановления! Код: ' . $return_var . 
+                          '. Ошибка: ' . htmlspecialchars($error_msg) . 
+                          '. Подробности в логе: ' . htmlspecialchars(basename($log_file))
+            ));
+            Log::instance()->add(Log::ERROR, 'Restore failed. Return code: ' . $return_var);
+            Log::instance()->add(Log::ERROR, 'Restore log: ' . $log_file);
+            Log::instance()->add(Log::ERROR, 'Restore error details: ' . $error_msg);
+        }
         
-        // Сохраняем путь к восстановленной БД в сессию для возможности автоматической замены
-        Session::instance()->set('restored_db_file', $new_restore_path);
-        Session::instance()->set('restored_db_log', $log_file);
-        
-    } else {
-        // Извлекаем ошибку из вывода
-        $error_lines = array_filter($output, function($line) {
-            return stripos($line, 'error') !== false || 
-                   stripos($line, 'fail') !== false || 
-                   stripos($line, 'unable') !== false ||
-                   stripos($line, 'cannot') !== false;
-        });
-        
-        $error_msg = !empty($error_lines) ? implode('; ', $error_lines) : 'Unknown error (check log file for details)';
-        
-        Session::instance()->set('flash_message_dbsetting', array(
-            'type' => 'error',
-            'text' => '❌ Ошибка восстановления! Код: ' . $return_var . 
-                      '. Ошибка: ' . htmlspecialchars($error_msg) . 
-                      '. Подробности в логе: ' . htmlspecialchars(basename($log_file))
-        ));
-        Log::instance()->add(Log::ERROR, 'Restore failed. Return code: ' . $return_var);
-        Log::instance()->add(Log::ERROR, 'Restore log: ' . $log_file);
-        Log::instance()->add(Log::ERROR, 'Restore error details: ' . $error_msg);
+        $this->redirect('dbsetting');
     }
-    
-    $this->redirect('dbsetting');
-}
     
     /**
      * Find the correct Firebird service name

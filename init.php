@@ -6,7 +6,7 @@
  */
 
 // Module version
-define('DBSETTING_VERSION', '1.0.6');
+define('DBSETTING_VERSION', '1.0.7');
 
 Kohana::$config->load('adm')
     ->set('dbsetting', array(

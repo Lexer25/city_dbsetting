@@ -123,7 +123,7 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
                                         <span class="glyphicon glyphicon-floppy-disk"></span> Сохранить
                                     </button>
                                 </span>
-                            </div>Ы
+                            </div>
                             <small class="text-muted">Введите имя файла вручную или выберите папку с БД через "Обзор"</small>
                         </div>
                         
