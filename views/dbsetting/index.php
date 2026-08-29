@@ -9,25 +9,21 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
         <p>Все функции управления базой данных и сервисом Firebird доступны для редактирования.</p>
     </div>
 
-<?php if (Session::instance()->get('flash_message_dbsetting')): ?>
-    <?php
-    $flash = Session::instance()->get('flash_message_dbsetting');
-    $type = Arr::get($flash, 'type', 'info');
-    $text = Arr::get($flash, 'text', '');
-    $alert_class = 'alert-' . ($type === 'error' ? 'danger' : $type);
-    Session::instance()->delete('flash_message_dbsetting');
-    ?>
-    <!-- ============================================ -->
-    <!-- FLASH-СООБЩЕНИЕ С КРЕСТИКОМ ДЛЯ ЗАКРЫТИЯ -->
-    <!-- ============================================ -->
-    <div id="flash-result" class="alert <?php echo $alert_class; ?> alert-dismissible fade in" role="alert">
-        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-            <span aria-hidden="true">&times;</span>
-        </button>
-        <?php echo $text; ?>
-    </div>
-    <!-- ============================================ -->
-<?php endif; ?>
+    <?php if (Session::instance()->get('flash_message_dbsetting')): ?>
+        <?php
+        $flash = Session::instance()->get('flash_message_dbsetting');
+        $type = Arr::get($flash, 'type', 'info');
+        $text = Arr::get($flash, 'text', '');
+        $alert_class = 'alert-' . ($type === 'error' ? 'danger' : $type);
+        Session::instance()->delete('flash_message_dbsetting');
+        ?>
+        <div id="flash-result" class="alert <?php echo $alert_class; ?> alert-dismissible fade in" role="alert">
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+            <?php echo $text; ?>
+        </div>
+    <?php endif; ?>
 
     <?php if (isset($db_error) && !empty($db_error)): ?>
         <div class="alert alert-warning">
@@ -310,42 +306,85 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
         </div>
     </div>
 
-    <!-- ============================================ -->
-    <!-- Модальное окно для бэкапа и восстановления -->
-    <!-- ============================================ -->
-    <div class="modal fade" id="processModal" tabindex="-1" role="dialog">
-        <div class="modal-dialog modal-sm" role="document">
-            <div class="modal-content">
-                <div class="modal-body text-center" style="padding: 40px 30px;">
-                    <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
-                        <span class="sr-only">Загрузка...</span>
-                    </div>
-                    <h4 style="margin-top: 20px;" id="processModalTitle">Выполняется операция...</h4>
-                    <p class="text-muted" id="processModalText">Пожалуйста, подождите. Это может занять несколько минут.</p>
-                    <!-- ============================================ -->
-                    <!-- ТАЙМЕР -->
-                    <!-- ============================================ -->
-                    <div id="processTimer" style="margin-top: 15px; font-size: 18px; font-weight: bold; color: #007bff;">
-                        ⏱️ 00:00
-                    </div>
-                    <!-- ============================================ -->
-                    <div id="processModalStatus" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
-                </div>
-                <div class="modal-footer" style="text-align: center; border-top: none; padding-top: 0;">
-                    <button type="button" class="btn btn-default" id="processModalClose" disabled style="display:none;">
-                        <span class="glyphicon glyphicon-ok"></span> Закрыть
-                    </button>
-                </div>
+</div>
+
+<!-- ============================================ -->
+<!-- Модальное окно для бэкапа и восстановления (jQuery UI) -->
+<!-- ============================================ -->
+<div id="processModal" style="display:none;" title="Выполняется операция">
+    <div style="text-align: center; padding: 10px 0;">
+        <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
+            <span class="sr-only">Загрузка...</span>
+        </div>
+        <h4 style="margin-top: 20px;" id="processModalTitle">Выполняется операция...</h4>
+        <p class="text-muted" id="processModalText">Пожалуйста, подождите. Это может занять несколько минут.</p>
+        
+        <!-- ============================================ -->
+        <!-- ВРЕМЯ СТАРТА И ТАЙМЕР -->
+        <!-- ============================================ -->
+        <div style="margin-top: 15px; font-size: 13px; color: #666;">
+            <div>▶️ Старт: <span id="processStartTime">--:--:--</span></div>
+            <div style="margin-top: 5px; font-size: 18px; font-weight: bold; color: #007bff;">
+                ⏱️ <span id="processTimer">00:00</span>
             </div>
         </div>
+        <!-- ============================================ -->
+        
+        <div id="processModalStatus" style="margin-top: 10px; font-size: 13px; color: #666;"></div>
+        
+        <!-- ============================================ -->
+        <!-- РЕЗУЛЬТАТ (появляется после завершения) -->
+        <!-- ============================================ -->
+        <div id="processResult" style="display:none; margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px; text-align: left; font-size: 13px; max-height: 150px; overflow-y: auto;">
+            <div id="processResultText"></div>
+        </div>
+        <!-- ============================================ -->
     </div>
-    <!-- ============================================ -->
-
 </div>
+<!-- ============================================ -->
 
 <iframe id="explorerIframe" style="display:none;"></iframe>
 
 <style>
+
+.spinner-border {
+    display: inline-block;
+    width: 4rem;
+    height: 4rem;
+    vertical-align: text-bottom;
+    border: 0.25em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-border .75s linear infinite;
+}
+@keyframes spinner-border {
+    to { transform: rotate(360deg); }
+}
+.text-primary { color: #007bff; }
+.ui-dialog .ui-dialog-titlebar-close {
+    display: none !important;
+}
+.ui-dialog .ui-dialog-buttonpane {
+    text-align: center !important;
+    border-top: none !important;
+    padding-top: 5px !important;
+}
+.ui-dialog .ui-dialog-buttonpane .ui-dialog-buttonset {
+    float: none !important;
+}
+.ui-dialog .ui-dialog-buttonpane .ui-button {
+    padding: 8px 25px;
+    font-size: 14px;
+}
+/* ============================================ */
+/* Скрываем спиннер когда он не нужен */
+/* ============================================ */
+.spinner-border.hidden {
+    display: none !important;
+}
+/* ============================================ */
+
+
 .glyphicon.spinning {
     animation: spin 1s infinite linear;
     -webkit-animation: spin2 1s infinite linear;
@@ -372,6 +411,21 @@ echo defined('DBSETTING_VERSION') ? DBSETTING_VERSION : '';
     to { transform: rotate(360deg); }
 }
 .text-primary { color: #007bff; }
+.ui-dialog .ui-dialog-titlebar-close {
+    display: none !important;
+}
+.ui-dialog .ui-dialog-buttonpane {
+    text-align: center !important;
+    border-top: none !important;
+    padding-top: 5px !important;
+}
+.ui-dialog .ui-dialog-buttonpane .ui-dialog-buttonset {
+    float: none !important;
+}
+.ui-dialog .ui-dialog-buttonpane .ui-button {
+    padding: 8px 25px;
+    font-size: 14px;
+}
 </style>
 
 <script>
@@ -384,59 +438,84 @@ console.log('dbsetting script loaded');
 // ============================================
 var timerInterval = null;
 var timerSeconds = 0;
+var operationStartTime = null;
 
 // ============================================
-// ФУНКЦИИ ДЛЯ МОДАЛЬНОГО ОКНА С ТАЙМЕРОМ
+// ФУНКЦИИ ДЛЯ МОДАЛЬНОГО ОКНА (jQuery UI)
 // ============================================
 
-// Показать модальное окно с таймером
-function showProcessModal(title, text, status) {
-    // Сбрасываем таймер
-    timerSeconds = 0;
-    document.getElementById('processTimer').textContent = '⏱️ 00:00';
-    
-    // Запускаем таймер
+// Показать результат в модальном окне (без закрытия)
+function showResultInModal(title, text, isSuccess) {
+    // Останавливаем таймер
     if (timerInterval) {
         clearInterval(timerInterval);
+        timerInterval = null;
     }
-    timerInterval = setInterval(function() {
-        timerSeconds++;
-        var minutes = Math.floor(timerSeconds / 60);
-        var seconds = timerSeconds % 60;
-        var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-        document.getElementById('processTimer').textContent = '⏱️ ' + timeStr;
-    }, 1000);
     
+    // Время завершения
+    var endTime = new Date();
+    var endTimeStr = endTime.toTimeString().slice(0, 8);
+    var startTimeStr = document.getElementById('processStartTime').textContent;
+    
+    // ============================================
+    // СКРЫВАЕМ СПИННЕР (надежно)
+    // ============================================
+    var spinner = document.querySelector('.spinner-border');
+    if (spinner) {
+        spinner.style.display = 'none';
+    }
+    // Также через jQuery на всякий случай
+    $('.spinner-border').hide();
+    // ============================================
+    
+    // Добавляем время завершения к результату
+    var fullText = '🕐 Старт: ' + startTimeStr + ' | 🏁 Финиш: ' + endTimeStr + '<br><br>' + text;
+    document.getElementById('processResultText').innerHTML = fullText;
+    
+    // Меняем заголовок
+    $('#processModal').dialog('option', 'title', title);
     document.getElementById('processModalTitle').textContent = title;
-    document.getElementById('processModalText').textContent = text;
-    document.getElementById('processModalStatus').innerHTML = status || '';
-    document.getElementById('processModalClose').style.display = 'none';
-    document.getElementById('processModalClose').disabled = true;
-    $('#processModal').modal({
-        backdrop: 'static',
-        keyboard: false
+    document.getElementById('processModalText').textContent = '';
+    document.getElementById('processModalStatus').innerHTML = '';
+    
+    // Показываем результат
+    document.getElementById('processResult').style.display = 'block';
+    
+    // Показываем и настраиваем кнопку ОК
+    var btnOk = $('.ui-dialog-buttonpane .ui-button');
+    btnOk.show();
+    
+    if (isSuccess) {
+        btnOk.removeClass('ui-state-default')
+            .addClass('ui-state-highlight')
+            .css('background', '#5cb85c')
+            .css('color', '#fff')
+            .css('border-color', '#4cae4c')
+            .css('font-weight', 'bold');
+    } else {
+        btnOk.removeClass('ui-state-default ui-state-highlight')
+            .css('background', '#d9534f')
+            .css('color', '#fff')
+            .css('border-color', '#d43f3a')
+            .css('font-weight', 'bold');
+    }
+    
+    btnOk.text('ОК');
+    btnOk.off('click').on('click', function() {
+        $('#processModal').dialog('close');
+        location.reload();
     });
 }
 
-// Закрыть модальное окно без перезагрузки
+
+// Закрыть модальное окно без перезагрузки (для критических ошибок)
 function hideProcessModal() {
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
     }
     try {
-        if (typeof $ !== 'undefined') {
-            $('#processModal').modal('hide');
-        } else {
-            var modal = document.getElementById('processModal');
-            if (modal) {
-                modal.classList.remove('in');
-                modal.style.display = 'none';
-                document.body.classList.remove('modal-open');
-                var backdrop = document.querySelector('.modal-backdrop');
-                if (backdrop) backdrop.remove();
-            }
-        }
+        $('#processModal').dialog('close');
     } catch(e) {}
 }
 
@@ -467,17 +546,20 @@ function startBackup() {
     })
     .then(response => response.text())
     .then(text => {
-        // Закрываем модальное окно
-        hideProcessModal();
-        
         if (text.indexOf('✅ Резервная копия успешно создана') !== -1) {
-            location.reload();
+            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
+            var sizeMatch = text.match(/Размер:\s*([^\s]+)/);
+            var info = '✅ Резервная копия успешно создана!<br><br>';
+            if (fileMatch) info += '📁 Файл: ' + fileMatch[1] + '<br>';
+            if (sizeMatch) info += '📊 Размер: ' + sizeMatch[1] + '<br>';
+            info += '⏱️ Время выполнения: ' + document.getElementById('processTimer').textContent;
+            
+            showResultInModal('✅ Готово!', info, true);
         } else if (text.indexOf('❌ Ошибка') !== -1) {
-            alert('❌ Ошибка создания резервной копии!\n\n' + text.replace(/\n/g, '\n'));
-            location.reload();
+            var errorMsg = text.replace(/\n/g, '<br>');
+            showResultInModal('❌ Ошибка!', errorMsg, false);
         } else {
-            alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
-            location.reload();
+            showResultInModal('⚠️ Неизвестный ответ', text.replace(/\n/g, '<br>'), false);
         }
     })
     .catch(err => {
@@ -516,17 +598,23 @@ function startRestore() {
     })
     .then(response => response.text())
     .then(text => {
-        // Закрываем модальное окно
-        hideProcessModal();
-        
         if (text.indexOf('✅ База данных успешно восстановлена') !== -1) {
-            location.reload();
+            var fileMatch = text.match(/Файл:\s*([^\n]+)/);
+            var info = '✅ База данных успешно восстановлена!<br><br>';
+            if (fileMatch) info += '📁 Файл: ' + fileMatch[1] + '<br>';
+            info += '⏱️ Время выполнения: ' + document.getElementById('processTimer').textContent;
+            info += '<br><br>⚠️ ДАЛЕЕ НЕОБХОДИМО ВРУЧНУЮ ЗАМЕНИТЬ ФАЙЛ:<br>';
+            info += '1. Остановить Firebird сервис<br>';
+            info += '2. Скопировать восстановленный файл в папку программы<br>';
+            info += '3. Переименовать<br>';
+            info += '4. Запустить Firebird сервис';
+            
+            showResultInModal('✅ Готово!', info, true);
         } else if (text.indexOf('❌ Ошибка') !== -1) {
-            alert('❌ Ошибка восстановления!\n\n' + text.replace(/\n/g, '\n'));
-            location.reload();
+            var errorMsg = text.replace(/\n/g, '<br>');
+            showResultInModal('❌ Ошибка!', errorMsg, false);
         } else {
-            alert('⚠️ Неизвестный ответ сервера.\n\n' + text.replace(/\n/g, '\n'));
-            location.reload();
+            showResultInModal('⚠️ Неизвестный ответ', text.replace(/\n/g, '<br>'), false);
         }
     })
     .catch(err => {
@@ -806,4 +894,85 @@ $(document).ready(function() {
         }, 150);
     }
 });
+
+// Показать модальное окно с таймером и временем старта
+function showProcessModal(title, text, status) {
+    // Сбрасываем таймер
+    timerSeconds = 0;
+    operationStartTime = new Date();
+    
+    // ============================================
+    // ПОКАЗЫВАЕМ СПИННЕР
+    // ============================================
+    var spinner = document.querySelector('.spinner-border');
+    if (spinner) {
+        spinner.style.display = 'inline-block';
+    }
+    $('.spinner-border').show();
+    // ============================================
+    
+    // Показываем время старта
+    var startTimeStr = operationStartTime.toTimeString().slice(0, 8);
+    document.getElementById('processStartTime').textContent = startTimeStr;
+    document.getElementById('processTimer').textContent = '00:00';
+    
+    // Скрываем результат и кнопку ОК
+    document.getElementById('processResult').style.display = 'none';
+    document.getElementById('processResultText').innerHTML = '';
+    
+    // Запускаем таймер
+    if (timerInterval) {
+        clearInterval(timerInterval);
+    }
+    timerInterval = setInterval(function() {
+        timerSeconds++;
+        var minutes = Math.floor(timerSeconds / 60);
+        var seconds = timerSeconds % 60;
+        var timeStr = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+        document.getElementById('processTimer').textContent = timeStr;
+    }, 1000);
+    
+    document.getElementById('processModalTitle').textContent = title;
+    document.getElementById('processModalText').textContent = text;
+    document.getElementById('processModalStatus').innerHTML = status || '';
+    
+    // Открываем диалог jQuery UI
+    $('#processModal').dialog({
+        modal: true,
+         width: 500,              // ← увеличили с 460 до 500
+    height: 'auto',          // ← автоматическая высота
+    maxHeight: 600,          // ← максимальная высота 600px
+        resizable: false,
+        draggable: false,
+        closeOnEscape: false,
+        dialogClass: 'no-close',
+        buttons: [
+            {
+                text: 'ОК',
+                id: 'processModalOkBtn',
+                click: function() {
+                    $(this).dialog('close');
+                    location.reload();
+                }
+            }
+        ],
+        open: function() {
+            // Скрываем кнопку ОК при открытии
+            var btnOk = $('.ui-dialog-buttonpane .ui-button');
+            btnOk.hide();
+            // Убираем крестик закрытия
+            $('.ui-dialog-titlebar-close').hide();
+            
+            // ============================================
+            // Убеждаемся что спиннер виден
+            // ============================================
+            var spinner = document.querySelector('.spinner-border');
+            if (spinner) {
+                spinner.style.display = 'inline-block';
+            }
+            $('.spinner-border').show();
+            // ============================================
+        }
+    });
+}
 </script>
